@@ -839,89 +839,34 @@ export async function getUnlockedTutorIds(buyerId: string = 'student-guest'): Pr
 }
 
 /**
- * 讀取或初始化用戶 Profile 點數
+ * 確保使用者 Profile 存在（Student Pass 模式；不再使用點數制）
  */
-export async function getUserProfile(userId: string, email?: string): Promise<{ points: number }> {
+export async function ensureUserProfile(userId: string, email?: string): Promise<boolean> {
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('points')
+      .select('id')
       .eq('id', userId)
       .maybeSingle();
 
     if (error) {
       console.warn('⚠️ 讀取 Profile 失敗:', error.message);
-      return { points: 100 };
+      return false;
     }
 
-    if (data) {
-      return { points: data.points ?? 100 };
-    }
+    if (data) return true;
 
-    // 若尚無 profile 紀錄，嘗試自動寫入一筆
     const { error: insertError } = await supabase
       .from('profiles')
-      .insert([{ id: userId, email: email || '', points: 100 }]);
+      .insert([{ id: userId, email: email || '' }]);
 
     if (insertError) {
       console.warn('⚠️ 初始化 Profile 失敗:', insertError.message);
-    }
-
-    return { points: 100 };
-  } catch (err) {
-    console.warn('⚠️ 讀取 Profile 異常:', err);
-    return { points: 100 };
-  }
-}
-
-/**
- * 扣除使用者點數
- */
-export async function deductUserPoints(userId: string, newPoints: number): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ points: newPoints })
-      .eq('id', userId);
-
-    if (error) {
-      console.error('⚠️ 扣除點數失敗:', error.message);
       return false;
     }
     return true;
   } catch (err) {
-    console.error('⚠️ 扣除點數異常:', err);
+    console.warn('⚠️ 讀取 Profile 異常:', err);
     return false;
-  }
-}
-
-/**
- * 將解鎖紀錄寫入 Supabase unlocks 資料表
- */
-export async function recordUnlock(
-  tutorId: string, 
-  buyerId: string, 
-  pointsSpent: number = 30
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase
-      .from('unlocks')
-      .insert([
-        {
-          tutor_id: tutorId,
-          buyer_id: buyerId,
-          points_spent: pointsSpent,
-        },
-      ]);
-
-    if (error) {
-      console.error('⚠️ 寫入 Supabase unlocks 失敗:', error.message);
-      return { success: false, error: error.message };
-    }
-
-    return { success: true };
-  } catch (err: any) {
-    console.error('⚠️ 寫入解鎖紀錄異常:', err);
-    return { success: false, error: err?.message || '寫入失敗' };
   }
 }

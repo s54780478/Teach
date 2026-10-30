@@ -1,258 +1,342 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { X, Sparkles, AlertCircle, CheckCircle2, Lock, Mail, ArrowRight } from 'lucide-react';
+import {
+  type AuthMethodId,
+  isValidEmailFormat,
+  sanitizeEmailInput,
+  startOAuth,
+} from '@/lib/authProviders';
+import { showAppToast } from '@/lib/appToast';
+import { ProviderBrandIcon } from '@/components/ProviderBrandIcon';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   defaultMode?: 'login' | 'signup';
-  /** 聯絡老師流程等情境提示 */
   intentHint?: string | null;
 }
 
+type BusyId = 'google' | 'apple' | 'email' | null;
+
+/** 畫面僅呈現 Superprof 同等權重的登入路徑（Email / Google / Apple） */
+const PRIMARY_SOCIAL: { id: 'google' | 'apple'; label: string }[] = [
+  { id: 'google', label: '使用 Google 登入' },
+  { id: 'apple', label: '使用 Apple 登入' },
+];
+
+function IdaltuMark({ className = 'w-14 h-14' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" aria-hidden>
+      {/* Superprof 式六角標：珊瑚紅底 + 黑色字標 */}
+      <path
+        fill="#FF5A5F"
+        d="M32 3.2L55.8 16.8v30.4L32 60.8 8.2 47.2V16.8L32 3.2Z"
+      />
+      <circle cx="32" cy="22" r="3.2" fill="#111111" />
+      <rect x="29.2" y="28" width="5.6" height="18" rx="2.4" fill="#111111" />
+    </svg>
+  );
+}
+
+/**
+ * Superprof 登入美學對齊：
+ * 全黑底、六角標、大標、軟圓角輸入／按鈕、圖示置左、底部註冊
+ */
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
   defaultMode = 'login',
-  intentHint = null,
+  intentHint: _intentHint = null,
 }) => {
+  void _intentHint;
   const [mode, setMode] = useState<'login' | 'signup'>(defaultMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [busyId, setBusyId] = useState<BusyId>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const debounceRef = useRef(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode(defaultMode);
+      document.body.style.overflow = 'hidden';
+    } else {
+      setBusyId(null);
+      debounceRef.current = false;
+      setErrorMsg(null);
+      setShowPassword(false);
+      setPassword('');
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, defaultMode]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  const anyBusy = busyId !== null;
+
+  const beginBusy = (id: BusyId): boolean => {
+    if (debounceRef.current || busyId) return false;
+    debounceRef.current = true;
+    setBusyId(id);
     setErrorMsg(null);
-    setSuccessMsg(null);
+    return true;
+  };
+
+  const endBusy = () => {
+    debounceRef.current = false;
+    setBusyId(null);
+  };
+
+  const handleOAuth = async (methodId: 'google' | 'apple') => {
+    if (!beginBusy(methodId)) return;
+    try {
+      const result = await startOAuth(methodId);
+      if (result.cancelled) {
+        showAppToast('已取消登入', 'info');
+        endBusy();
+        return;
+      }
+      if (result.error) {
+        setErrorMsg(result.error);
+        endBusy();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : '';
+      if (msg.includes('cancel') || msg.includes('denied') || msg.includes('popup')) {
+        showAppToast('已取消登入', 'info');
+      } else {
+        setErrorMsg(err instanceof Error ? err.message : '登入失敗，請稍後再試');
+      }
+      endBusy();
+    }
+  };
+
+  const handleEmailContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (anyBusy) return;
+
+    const cleaned = sanitizeEmailInput(email);
+    if (!isValidEmailFormat(cleaned)) {
+      setErrorMsg('請輸入有效的電子信箱');
+      return;
+    }
+
+    if (!showPassword) {
+      setShowPassword(true);
+      setErrorMsg(null);
+      return;
+    }
+
+    if (password.length < 6) {
+      setErrorMsg('密碼至少需 6 位字元');
+      return;
+    }
+
+    if (!beginBusy('email')) return;
 
     try {
       if (mode === 'signup') {
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: cleaned,
           password,
         });
-
         if (error) {
           setErrorMsg(error.message);
+          endBusy();
           return;
         }
-
         if (data.session) {
-          // 若 Supabase 未開啟信箱驗證，直接登入成功
-          setSuccessMsg('註冊成功！已自動為您登入並存入 100 點迎新點數。');
-          setTimeout(() => {
-            onSuccess();
-            onClose();
-          }, 900);
-        } else {
-          // 若 Supabase 有開啟確認信箱
-          setSuccessMsg('註冊驗證信已寄出！請至信箱點擊確認連結以完成開通。');
-        }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) {
-          setErrorMsg(error.message === 'Invalid login credentials' ? '電子信箱或密碼錯誤，請重新輸入' : error.message);
-          return;
-        }
-
-        setSuccessMsg('登入成功！正在載入您的學員點數...');
-        setTimeout(() => {
           onSuccess();
           onClose();
-        }, 600);
+          endBusy();
+          return;
+        }
+        setErrorMsg(null);
+        showAppToast('驗證信已寄出，請至信箱完成開通', 'success');
+        endBusy();
+        return;
       }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: cleaned,
+        password,
+      });
+
+      if (!signInError) {
+        onSuccess();
+        onClose();
+        endBusy();
+        return;
+      }
+
+      setErrorMsg(
+        signInError.message === 'Invalid login credentials'
+          ? '電子信箱或密碼錯誤，請重新輸入'
+          : signInError.message
+      );
+      endBusy();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : '操作失敗，請稍後再試');
-    } finally {
-      setIsLoading(false);
+      endBusy();
     }
   };
 
-  const switchMode = (newMode: 'login' | 'signup') => {
-    setMode(newMode);
+  const switchMode = (next: 'login' | 'signup') => {
+    if (anyBusy) return;
+    setMode(next);
     setErrorMsg(null);
-    setSuccessMsg(null);
+    setShowPassword(false);
+    setPassword('');
   };
 
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={onClose}
+    <div
+      className="fixed inset-0 z-50 bg-[#141414] text-white overflow-y-auto overscroll-contain"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-modal-title"
     >
-      <div 
-        className="relative w-full max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Modal Header */}
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xl font-black text-slate-900 tracking-tight">idaltu</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-            <span className="text-xs text-gray-400 font-medium ml-1">
-              {mode === 'login' ? '學員登入' : '免費註冊'}
-            </span>
-          </div>
+      <div className="min-h-full w-full max-w-[392px] mx-auto px-7 pt-2 pb-12">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={anyBusy}
+          aria-label="關閉"
+          className="-ml-2.5 w-11 h-11 flex items-center justify-center text-[#8e8e93] hover:text-white transition disabled:opacity-40"
+        >
+          <X className="w-[22px] h-[22px]" strokeWidth={1.6} />
+        </button>
 
-          <button
-            onClick={onClose}
-            aria-label="關閉"
-            className="w-7 h-7 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 flex items-center justify-center transition"
+        <div className="flex flex-col items-center mt-8 mb-10">
+          <IdaltuMark className="w-[56px] h-[56px] mb-6" />
+          <h2
+            id="auth-modal-title"
+            className="text-[34px] font-bold tracking-[-0.03em] text-white leading-none"
           >
-            <X className="w-4 h-4" />
-          </button>
+            {mode === 'login' ? '登入' : '註冊'}
+          </h2>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="grid grid-cols-2 p-1.5 m-4 bg-gray-100 rounded-xl text-xs font-semibold text-gray-600">
-          <button
-            type="button"
-            onClick={() => switchMode('login')}
-            className={`py-1.5 rounded-lg transition ${
-              mode === 'login' ? 'bg-white text-slate-900 shadow-sm font-bold' : 'hover:text-slate-900'
-            }`}
-          >
-            登入帳號
-          </button>
-          <button
-            type="button"
-            onClick={() => switchMode('signup')}
-            className={`py-1.5 rounded-lg transition ${
-              mode === 'signup' ? 'bg-white text-slate-900 shadow-sm font-bold' : 'hover:text-slate-900'
-            }`}
-          >
-            免費註冊
-          </button>
-        </div>
+        <form onSubmit={handleEmailContinue} className="flex flex-col gap-3.5">
+          <input
+            id="auth-email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="電子信箱"
+            aria-label="電子信箱"
+            value={email}
+            disabled={anyBusy}
+            onChange={(e) => setEmail(sanitizeEmailInput(e.target.value))}
+            onPaste={(e) => {
+              e.preventDefault();
+              setEmail(sanitizeEmailInput(e.clipboardData.getData('text')));
+            }}
+            className="w-full h-[52px] px-5 rounded-[14px] bg-transparent border border-[#3a3a3c] text-[15px] text-white placeholder:text-[#8e8e93] focus:outline-none focus:border-[#6e6e73] transition disabled:opacity-50"
+          />
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="px-5 pb-5 space-y-3.5">
-          {intentHint && (
-            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-2 text-xs text-slate-700 leading-normal">
-              <Lock className="w-4 h-4 text-brand-500 flex-shrink-0 mt-0.5" />
-              <span>{intentHint}</span>
-            </div>
+          {showPassword && (
+            <input
+              id="auth-password"
+              type="password"
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              placeholder="密碼"
+              aria-label="密碼"
+              value={password}
+              disabled={anyBusy}
+              minLength={6}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full h-[52px] px-5 rounded-[14px] bg-transparent border border-[#3a3a3c] text-[15px] text-white placeholder:text-[#8e8e93] focus:outline-none focus:border-[#6e6e73] transition disabled:opacity-50"
+            />
           )}
 
-          {/* Welcome Bonus Notice for Sign Up */}
-          {mode === 'signup' && (
-            <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl flex items-start gap-2 text-xs text-rose-800 leading-normal">
-              <Sparkles className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <strong>迎新好禮：</strong>新學員註冊即贈送 <strong>100 點解鎖點數</strong>，可直接解鎖多位導師！
-              </div>
-            </div>
-          )}
-
-          {/* Email Input */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">電子信箱</label>
-            <div className="relative">
-              <input
-                type="email"
-                required
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full text-xs px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:border-gray-400 transition"
-              />
-            </div>
-          </div>
-
-          {/* Password Input */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">密碼（至少 6 位字元）</label>
-            <div className="relative">
-              <input
-                type="password"
-                required
-                minLength={6}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full text-xs px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:border-gray-400 transition"
-              />
-            </div>
-          </div>
-
-          {/* Error Message */}
-          {errorMsg && (
-            <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2 text-xs text-red-700">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          {/* Success Message */}
-          {successMsg && (
-            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2 text-xs text-emerald-800">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-
-          {/* Submit Button */}
           <button
             type="submit"
-            disabled={isLoading}
-            className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-60 cursor-pointer"
+            disabled={anyBusy}
+            className="w-full h-[52px] rounded-[14px] bg-[#E31C3D] hover:bg-[#f02848] active:bg-[#c91834] text-white text-[16px] font-semibold transition flex items-center justify-center gap-2 disabled:opacity-55"
           >
-            {isLoading ? (
-              <span>處理中...</span>
-            ) : mode === 'login' ? (
-              <>
-                <span>登入帳號</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
-            ) : (
-              <>
-                <span>立即註冊並領取 100 點</span>
-                <Sparkles className="w-3.5 h-3.5" />
-              </>
-            )}
+            {busyId === 'email' && <Loader2 className="w-5 h-5 animate-spin" />}
+            {mode === 'login' ? '登入' : '註冊'}
           </button>
-
-          {/* Footer Mode Switch Prompt */}
-          <div className="text-center text-xs text-gray-500 pt-1">
-            {mode === 'login' ? (
-              <span>
-                還沒有帳號？{' '}
-                <button
-                  type="button"
-                  onClick={() => switchMode('signup')}
-                  className="text-rose-600 font-bold hover:underline cursor-pointer"
-                >
-                  免費註冊領取 100 點
-                </button>
-              </span>
-            ) : (
-              <span>
-                已經有帳號？{' '}
-                <button
-                  type="button"
-                  onClick={() => switchMode('login')}
-                  className="text-rose-600 font-bold hover:underline cursor-pointer"
-                >
-                  返回登入
-                </button>
-              </span>
-            )}
-          </div>
-
         </form>
+
+        {errorMsg && (
+          <p className="mt-3 text-center text-[13px] text-[#ff6b6b] leading-snug" role="alert">
+            {errorMsg}
+          </p>
+        )}
+
+        <p className="text-center text-[13px] text-[#8e8e93] py-6">或者</p>
+
+        <div className="flex flex-col gap-3" aria-label="其他登入方式">
+          {PRIMARY_SOCIAL.map((method) => {
+            const isThisBusy = busyId === method.id;
+            const locked = anyBusy && !isThisBusy;
+
+            return (
+              <button
+                key={method.id}
+                type="button"
+                disabled={anyBusy}
+                aria-label={method.label}
+                aria-busy={isThisBusy}
+                onClick={() => void handleOAuth(method.id)}
+                className={`relative w-full h-[52px] rounded-[14px] bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white text-[15px] font-medium transition disabled:pointer-events-none ${
+                  locked ? 'opacity-40' : ''
+                }`}
+              >
+                <span className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center">
+                  {isThisBusy ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-[#FF5A5F]" />
+                  ) : (
+                    <ProviderBrandIcon
+                      id={method.id as AuthMethodId}
+                      className="w-[22px] h-[22px]"
+                    />
+                  )}
+                </span>
+                <span className="block w-full text-center px-12">{method.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-12 text-center">
+          {mode === 'login' ? (
+            <>
+              <p className="text-[15px] text-[#8e8e93] leading-none mb-3">還沒有帳戶？</p>
+              <button
+                type="button"
+                disabled={anyBusy}
+                onClick={() => switchMode('signup')}
+                className="text-[16px] font-medium text-white leading-none hover:opacity-80 disabled:opacity-40"
+              >
+                註冊
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-[15px] text-[#8e8e93] leading-none mb-3">已經有帳戶？</p>
+              <button
+                type="button"
+                disabled={anyBusy}
+                onClick={() => switchMode('login')}
+                className="text-[16px] font-medium text-white leading-none hover:opacity-80 disabled:opacity-40"
+              >
+                登入
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

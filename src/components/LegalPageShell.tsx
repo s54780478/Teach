@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { SiteFooter } from '@/components/SiteFooter';
+import { LogoHomeLink } from '@/components/LogoHomeLink';
 import { useStudentPass } from '@/hooks/useStudentPass';
 import { AuthModal } from '@/components/AuthModal';
 import { SITE_SUPPORT_EMAIL } from '@/lib/siteConfig';
@@ -35,13 +35,10 @@ export const LegalPageShell: React.FC<LegalPageShellProps> = ({
       />
 
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition mb-6"
-        >
+        <LogoHomeLink className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition mb-6">
           <ArrowLeft className="w-4 h-4" />
           回首頁
-        </Link>
+        </LogoHomeLink>
 
         <article className="rounded-3xl border border-slate-200 bg-white shadow-sm p-6 sm:p-10">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">

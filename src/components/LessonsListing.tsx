@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { ChevronRight, Loader2, Monitor, MapPin } from 'lucide-react';
+import { Loader2, Monitor, MapPin } from 'lucide-react';
 import type { Tutor } from '@/types/tutor';
 import { searchTutors } from '@/lib/tutorService';
 import {
@@ -23,8 +22,10 @@ import {
   type AdvancedFilterValues,
 } from '@/components/AdvancedFilterPanel';
 import { EmptySearchState } from '@/components/EmptySearchState';
+import { SearchBreadcrumb } from '@/components/SearchBreadcrumb';
 import { SiteFooter } from '@/components/SiteFooter';
 import { useStudentPass } from '@/hooks/useStudentPass';
+import { authIntentForTutor } from '@/lib/contactFlowCopy';
 
 interface LessonsListingProps {
   regionSlug: string;
@@ -119,8 +120,13 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#0c0c0e] text-white flex flex-col">
-      <div className="border-b border-white/5 bg-[#0c0c0e]">
+    <div className="min-h-screen bg-white text-[#1a1a1a] flex flex-col">
+      <div
+        className="border-b border-black/[0.06]"
+        style={{
+          background: 'linear-gradient(115deg, #ffe4e1 0%, #fff8f7 55%, #ffffff 100%)',
+        }}
+      >
         <Header
           variant="hero"
           user={currentUser}
@@ -133,38 +139,22 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
         />
       </div>
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-        <nav aria-label="麵包屑" className="flex flex-wrap items-center gap-1.5 text-xs text-white/45 mb-5">
-          <Link href="/" className="hover:text-white transition">
-            首頁
-          </Link>
-          <ChevronRight className="w-3.5 h-3.5" />
-          <Link href="/lessons/all/all" className="hover:text-white transition">
-            課程探索
-          </Link>
-          <ChevronRight className="w-3.5 h-3.5" />
-          <Link
-            href={`/lessons/${encodeURIComponent(regionSlug)}/all`}
-            className="hover:text-white transition"
-          >
-            {regionLabel}
-          </Link>
-          {subjectQuery && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5" />
-              <span className="text-white/80 font-medium">{subjectLabel}</span>
-            </>
-          )}
-        </nav>
+      <main className="flex-1 max-w-[1060px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+        <SearchBreadcrumb
+          subject={subjectQuery}
+          regionLabel={onlineRegion ? '線上' : regionLabel}
+          regionForPath={onlineRegion ? '線上' : regionSlug}
+          className="mb-5"
+        />
 
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+          <h1 className="text-[32px] sm:text-[40px] font-black tracking-tight leading-tight text-[#1d1d1f]">
             {pageTitle}
           </h1>
-          <p className="mt-2 text-sm text-white/50">
+          <p className="mt-2 text-sm text-[#6e6e73]">
             {isLoading
-              ? '正在載入課程…'
-              : `共 ${tutors.length} 門相關課程 · 許多導師提供首堂免費體驗`}
+              ? '正在為你媒合最適合的老師…'
+              : `顯示 ${tutors.length} 位導師 · 許多人提供第一堂課免費體驗`}
             {!isFromSupabase && !isLoading ? ' · 示範資料' : ''}
           </p>
         </div>
@@ -188,8 +178,8 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
               onClick={() => setAdvanced((prev) => ({ ...prev, mode: chip.id }))}
               className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs transition cursor-pointer border ${
                 advanced.mode === chip.id
-                  ? 'bg-white text-slate-900 font-semibold border-white'
-                  : 'bg-transparent text-white/65 border-white/15 hover:border-white/30'
+                  ? 'bg-[#1a1a1a] text-white font-semibold border-[#1a1a1a]'
+                  : 'bg-[#f5f5f5] text-[#5c5c5c] border-transparent hover:bg-[#ececec]'
               }`}
             >
               {chip.id === 'online' && <Monitor className="w-3 h-3" />}
@@ -197,7 +187,7 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
               {chip.label}
             </button>
           ))}
-          <label className="ml-auto inline-flex items-center gap-2 text-[11px] text-white/40">
+          <label className="ml-auto inline-flex items-center gap-2 text-[12px] text-[#6e6e73]">
             排序
             <select
               value={advanced.sortBy}
@@ -208,20 +198,12 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
                 }))
               }
               aria-label="排序方式"
-              className="bg-white/5 border border-white/15 rounded-full px-3 py-1.5 text-xs text-white/85 font-medium focus:outline-none cursor-pointer"
+              className="bg-white border border-black/10 rounded-full px-3 py-1.5 text-xs text-[#1d1d1f] font-medium focus:outline-none cursor-pointer"
             >
-              <option value="recommended" className="text-slate-900">
-                推薦
-              </option>
-              <option value="rating" className="text-slate-900">
-                評價最高
-              </option>
-              <option value="price-asc" className="text-slate-900">
-                時薪：低到高
-              </option>
-              <option value="price-desc" className="text-slate-900">
-                時薪：高到低
-              </option>
+              <option value="recommended">推薦</option>
+              <option value="rating">評價最高</option>
+              <option value="price-asc">時薪：低到高</option>
+              <option value="price-desc">時薪：高到低</option>
             </select>
           </label>
         </div>
@@ -232,7 +214,7 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
               <Loader2 className="w-7 h-7 animate-spin text-brand-500" />
             </div>
           ) : tutors.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-7">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6 lg:gap-8">
               {tutors.map((tutor) => (
                 <TutorCard
                   key={tutor.id}
@@ -285,9 +267,7 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         intentHint={
-          selectedTutor
-            ? `登入後即可開通 Student Pass，聯繫「${selectedTutor.name}」並查看 LINE／電話。`
-            : null
+          selectedTutor ? authIntentForTutor(selectedTutor.name) : null
         }
         onSuccess={async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -312,7 +292,7 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
         unlockedIds={contactedTutorIds}
       />
 
-      <SiteFooter variant="dark" />
+      <SiteFooter variant="light" />
     </div>
   );
 };

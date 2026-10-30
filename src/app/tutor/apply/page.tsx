@@ -17,6 +17,15 @@ import {
   modesFromLegacyMode,
 } from '@/lib/teachingModes';
 import {
+  HEADLINE_MAX,
+  clampHeadline,
+  digitsOnlyAmount,
+  digitsOnlyPhone,
+  validateHeadlineRequired,
+  validateHourlyRate,
+  validatePhoneOptional,
+} from '@/lib/formHelpers';
+import {
   ArrowLeft,
   ArrowRight,
   CheckCircle,
@@ -28,6 +37,7 @@ import {
   Phone,
   Sparkles,
 } from 'lucide-react';
+import { LogoHomeLink } from '@/components/LogoHomeLink';
 
 const STEPS = [
   { id: 1, title: '基本資料', icon: UserRound },
@@ -206,16 +216,10 @@ export default function TutorApplyPage() {
       if (form.teachingModes.length === 0) {
         errors.teachingModes = '請至少選擇一種授課方式';
       }
-      if (!form.headline.trim()) {
-        errors.headline = '請填寫個人頭銜（一句話介紹）';
-      } else if (form.headline.trim().length > 50) {
-        errors.headline = '頭銜請控制在 50 字以內';
-      }
-      if (!form.hourlyRate.trim()) {
-        errors.hourlyRate = '請填寫時薪';
-      } else if (Number.isNaN(Number(form.hourlyRate)) || Number(form.hourlyRate) < 100) {
-        errors.hourlyRate = '時薪需為數字且至少 100 元';
-      }
+      const headlineErr = validateHeadlineRequired(form.headline);
+      if (headlineErr) errors.headline = headlineErr;
+      const rateErr = validateHourlyRate(form.hourlyRate);
+      if (rateErr) errors.hourlyRate = rateErr;
     }
 
     if (currentStep === 3) {
@@ -223,6 +227,8 @@ export default function TutorApplyPage() {
         errors.lineId = '請至少填寫 LINE ID 或電話其一';
         errors.phone = '請至少填寫 LINE ID 或電話其一';
       }
+      const phoneErr = validatePhoneOptional(form.phone);
+      if (phoneErr) errors.phone = phoneErr;
     }
 
     setFieldErrors(errors);
@@ -323,9 +329,9 @@ export default function TutorApplyPage() {
         <main className="max-w-lg mx-auto px-4 py-16 text-center">
           <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
             <Sparkles className="w-10 h-10 text-brand-500 mx-auto mb-4" />
-            <h1 className="text-xl font-bold text-slate-900 mb-2">免費刊登您的家教廣告</h1>
+            <h1 className="text-xl font-bold text-slate-900 mb-2">免費刊登您的家教課程</h1>
             <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-              建立一頁公開的家教課程廣告，吸引學生主動聯繫・平台不抽成鐘點費。請先登入，以便將廣告綁定您的帳號。
+              建立一頁公開的家教課程頁，吸引學生主動聯繫・平台不抽成鐘點費。請先登入，以便將課程綁定您的帳號。
             </p>
             <button
               type="button"
@@ -359,20 +365,20 @@ export default function TutorApplyPage() {
               <CheckCircle className="w-8 h-8" />
             </div>
             <h1 className="text-xl font-bold text-slate-900 mb-2">
-              {isEditMode ? '廣告已更新！' : '您的家教廣告已刊登！'}
+              {isEditMode ? '課程已更新！' : '您的家教課程已刊登！'}
             </h1>
             <p className="text-sm text-slate-600 leading-relaxed mb-2">
-              家長可瀏覽您的公開課程頁，並透過<strong className="text-slate-900">單次微付款解鎖</strong>聯絡方式。
+              家長可瀏覽您的公開課程頁；訂閱 <strong className="text-slate-900">Student Pass</strong> 後即可聯繫您。
             </p>
             <p className="text-xs text-slate-400 mb-8 leading-relaxed">
-              鐘點費 100% 歸您所有・idaltu 不抽成仲介費・聯絡資訊僅在學員解鎖後顯示
+              鐘點費 100% 歸您所有・idaltu 不抽成仲介費・聯絡資訊僅在學員開通通行證後顯示
             </p>
             <div className="flex flex-col sm:flex-row gap-2.5">
               <Link
                 href="/"
                 className="flex-1 inline-flex items-center justify-center bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm py-3 rounded-xl transition"
               >
-                回首頁查看廣告
+                回首頁查看課程
               </Link>
               <button
                 type="button"
@@ -383,7 +389,7 @@ export default function TutorApplyPage() {
                 }}
                 className="flex-1 inline-flex items-center justify-center border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm py-3 rounded-xl transition cursor-pointer"
               >
-                繼續編輯廣告
+                繼續編輯課程
               </button>
             </div>
           </div>
@@ -394,16 +400,16 @@ export default function TutorApplyPage() {
 
   return (
     <div className="min-h-screen bg-[#fafaf9]">
-      <ApplyTopBar title={isEditMode ? '編輯廣告' : '刊登課程'} />
+      <ApplyTopBar title={isEditMode ? '編輯課程' : '刊登課程'} />
 
       <main className="max-w-xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Hero */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            {isEditMode ? '更新您的家教廣告' : '刊登您的家教課程'}
+            {isEditMode ? '更新您的家教課程' : '刊登您的家教課程'}
           </h1>
           <p className="text-sm text-slate-500 mt-1.5">
-            建立公開的家教廣告頁面，吸引學生主動聯繫・免費刊登、不抽成鐘點費
+            建立公開的家教課程頁，吸引學生主動聯繫・免費刊登、不抽成鐘點費
           </p>
         </div>
 
@@ -686,11 +692,11 @@ export default function TutorApplyPage() {
                   </span>
                   <input
                     id="hourlyRate"
-                    type="number"
-                    min={100}
-                    step={50}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={form.hourlyRate}
-                    onChange={(e) => setField('hourlyRate', e.target.value)}
+                    onChange={(e) => setField('hourlyRate', digitsOnlyAmount(e.target.value))}
                     placeholder="600"
                     className={`${inputClass(fieldErrors.hourlyRate)} pl-12`}
                   />
@@ -740,15 +746,15 @@ export default function TutorApplyPage() {
                 <label htmlFor="headline" className="block text-xs font-medium text-slate-700 mb-1.5">
                   個人頭銜 (Headline) <span className="text-brand-500">*</span>
                   <span className="text-slate-400 font-normal ml-1">
-                    {form.headline.length}/50
+                    {form.headline.length}/{HEADLINE_MAX}
                   </span>
                 </label>
                 <input
                   id="headline"
                   type="text"
-                  maxLength={50}
+                  maxLength={HEADLINE_MAX}
                   value={form.headline}
-                  onChange={(e) => setField('headline', e.target.value.slice(0, 50))}
+                  onChange={(e) => setField('headline', clampHeadline(e.target.value))}
                   placeholder="例：10 年國立大學物理系講師"
                   className={inputClass(fieldErrors.headline)}
                 />
@@ -784,7 +790,7 @@ export default function TutorApplyPage() {
               </div>
 
               <div className="rounded-xl bg-emerald-50 border border-emerald-200/70 px-3.5 py-3 text-xs text-emerald-800 leading-relaxed">
-                家長需完成<strong>單次微付款解鎖</strong>後才看得到以下資訊，保護您的隱私。
+                家長需開通 <strong>Student Pass</strong> 後才看得到以下資訊，保護您的隱私。
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -811,9 +817,11 @@ export default function TutorApplyPage() {
                   <input
                     id="phone"
                     type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
                     value={form.phone}
-                    onChange={(e) => setField('phone', e.target.value)}
-                    placeholder="例：0912-345-678"
+                    onChange={(e) => setField('phone', digitsOnlyPhone(e.target.value, false))}
+                    placeholder="例：0912345678"
                     className={inputClass(fieldErrors.phone)}
                   />
                   {fieldErrors.phone && (
@@ -824,7 +832,7 @@ export default function TutorApplyPage() {
 
               {/* Mini preview */}
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-xs text-slate-600 space-y-1">
-                <p className="font-semibold text-slate-800 text-sm mb-2">廣告預覽</p>
+                  <p className="font-semibold text-slate-800 text-sm mb-2">課程預覽</p>
                 <p>
                   <span className="text-slate-400">稱呼</span> {form.name || '—'}
                 </p>
@@ -891,8 +899,8 @@ export default function TutorApplyPage() {
                 {isSubmitting
                   ? '正在刊登…'
                   : isEditMode
-                    ? '更新廣告'
-                    : '刊登家教廣告'}
+                    ? '更新課程'
+                    : '刊登家教課程'}
               </button>
             )}
           </div>
@@ -906,18 +914,15 @@ function ApplyTopBar({ title = '刊登課程' }: { title?: string }) {
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
       <div className="max-w-xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition"
-        >
+        <LogoHomeLink className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition">
           <ArrowLeft className="w-4 h-4" />
           返回
-        </Link>
+        </LogoHomeLink>
         <span className="text-sm font-bold text-slate-900">{title}</span>
-        <Link href="/" className="text-xs font-black tracking-tight text-slate-900">
+        <LogoHomeLink className="text-xs font-black tracking-tight text-slate-900">
           idaltu
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand-500 ml-0.5 mb-0.5" />
-        </Link>
+        </LogoHomeLink>
       </div>
     </header>
   );

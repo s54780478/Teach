@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { LogoHomeLink } from '@/components/LogoHomeLink';
 import { SITE_NAME, SITE_SUPPORT_EMAIL } from '@/lib/siteConfig';
 
 interface SiteFooterProps {
@@ -15,20 +16,20 @@ export const SiteFooter: React.FC<SiteFooterProps> = ({ variant = 'dark' }) => {
     <footer
       className={`border-t ${
         isDark
-          ? 'bg-[#0a0a0b] border-white/5 text-white/40'
-          : 'bg-white border-slate-200 text-slate-500'
+          ? 'bg-[#0a0a0b] border-white/5 text-white/70'
+          : 'bg-white border-black/[0.06] text-[#6e6e73]'
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-8">
           <div className="max-w-sm">
-            <p
-              className={`font-black text-sm tracking-tight ${
+            <LogoHomeLink
+              className={`font-black text-sm tracking-tight inline-block ${
                 isDark ? 'text-brand-500' : 'text-brand-500'
               }`}
             >
               {SITE_NAME}
-            </p>
+            </LogoHomeLink>
             <p className="mt-2 text-xs leading-relaxed">
               台灣在地家教與多元技能媒合平台。導師免費刊登、學員訂閱 Student Pass
               後解鎖聯繫；平台不抽成鐘點費。

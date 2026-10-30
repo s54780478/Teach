@@ -7,6 +7,7 @@ import { HomeHero } from '@/components/HomeHero';
 import { CategoryFilter } from '@/components/CategoryFilter';
 import { TutorCard } from '@/components/TutorCard';
 import { AuthModal } from '@/components/AuthModal';
+import { BindEmailModal } from '@/components/BindEmailModal';
 import { StudentPassModal } from '@/components/StudentPassModal';
 import { ContactViewModal } from '@/components/ContactViewModal';
 import { UnlockedTutorsDrawer } from '@/components/UnlockedTutorsDrawer';
@@ -16,6 +17,7 @@ import {
   type AdvancedFilterValues,
 } from '@/components/AdvancedFilterPanel';
 import { EmptySearchState } from '@/components/EmptySearchState';
+import { SearchBreadcrumb } from '@/components/SearchBreadcrumb';
 import { SiteFooter } from '@/components/SiteFooter';
 import { useStudentPass } from '@/hooks/useStudentPass';
 import { supabase } from '@/lib/supabaseClient';
@@ -24,6 +26,8 @@ import {
   collectAvailableSubjectQueries,
 } from '@/lib/tutorFilters';
 import { SUBJECT_QUICK_FILTERS } from '@/data/filterOptions';
+import { authIntentForTutor } from '@/lib/contactFlowCopy';
+import { HOME_RESET_EVENT } from '@/components/LogoHomeLink';
 import { RefreshCw, AlertCircle } from 'lucide-react';
 
 const SUBJECT_QUERY_IDS = SUBJECT_QUICK_FILTERS.filter((s) => s.id !== 'all').map(
@@ -74,9 +78,29 @@ export default function HomePage() {
 
   const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isBindEmailOpen, setIsBindEmailOpen] = useState(false);
   const [isPassModalOpen, setIsPassModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isContactedDrawerOpen, setIsContactedDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    let needBind = params.get('bindEmail') === '1';
+    try {
+      if (sessionStorage.getItem('idaltu_need_bind_email') === '1') needBind = true;
+    } catch {
+      /* ignore */
+    }
+    if (needBind) {
+      setIsBindEmailOpen(true);
+      if (params.has('bindEmail')) {
+        params.delete('bindEmail');
+        const next = params.toString();
+        window.history.replaceState({}, '', next ? `/?${next}` : '/');
+      }
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -204,13 +228,23 @@ export default function HomePage() {
     });
   }, [tutors, activeCategory, onlyFreeLesson]);
 
-  const resetFilters = () => {
+  const resetFilters = useCallback(() => {
     setSearchSubject('');
     setSearchLocation('');
     setActiveCategory('all');
     setOnlyFreeLesson(false);
     setAdvanced(DEFAULT_ADVANCED_FILTERS);
-  };
+  }, []);
+
+  /** Logo／麵包屑「idaltu」回首頁時清空篩選（同頁 soft 點擊也要生效） */
+  useEffect(() => {
+    const onHomeReset = () => {
+      resetFilters();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.addEventListener(HOME_RESET_EVENT, onHomeReset);
+    return () => window.removeEventListener(HOME_RESET_EVENT, onHomeReset);
+  }, [resetFilters]);
 
   const hasActiveFilters =
     Boolean(searchSubject.trim()) ||
@@ -221,7 +255,7 @@ export default function HomePage() {
     advanced.sortBy !== 'recommended';
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f7f7f8]">
+    <div className="min-h-screen flex flex-col bg-white">
       <HomeHero
         searchSubject={searchSubject}
         setSearchSubject={setSearchSubject}
@@ -241,19 +275,35 @@ export default function HomePage() {
         />
       </HomeHero>
 
-      <div className="bg-[#0c0c0e] flex-1 border-t border-white/5">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-3">
-          <p className="flex items-center gap-2 text-sm sm:text-base text-white font-medium">
-            <span className="font-bold">
-              {Math.max(filteredTutors.length, 1).toLocaleString()}位
-            </span>
-            有評價的導師
-            <span className="inline-flex text-brand-500 tracking-tight text-sm" aria-hidden>
-              ★★★★★
-            </span>
-          </p>
-          <p className="mt-1 text-xs text-white/40">
-            許多導師提供首堂免費體驗 · Student Pass 解鎖聯繫
+      <div className="bg-white flex-1">
+        <div className="max-w-[1060px] mx-auto px-4 sm:px-6 lg:px-8 pt-5 sm:pt-7 pb-2 space-y-3">
+          <SearchBreadcrumb
+            subject={searchSubject}
+            regionLabel={
+              isOnlineLocation(searchLocation)
+                ? '線上'
+                : searchLocation.trim() || undefined
+            }
+            regionForPath={
+              isOnlineLocation(searchLocation)
+                ? '線上'
+                : searchLocation.trim() || 'all'
+            }
+          />
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[18px] sm:text-[20px] text-[#121212] font-bold">
+            {isLoading ? (
+              <span className="text-[#6e6e73] font-medium text-[16px]">正在載入導師…</span>
+            ) : (
+              <>
+                <span className="tabular-nums">{filteredTutors.length.toLocaleString()}</span>
+                <span>位私人老師</span>
+                {filteredTutors.some((t) => t.reviews.reviewCount > 0) && (
+                  <span className="inline-flex text-[#FF6363] tracking-tight text-[14px]" aria-hidden>
+                    ★★★★★
+                  </span>
+                )}
+              </>
+            )}
           </p>
         </div>
 
@@ -274,9 +324,9 @@ export default function HomePage() {
           onClearAll={resetFilters}
         />
 
-        <main id="tutors" className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          <div className="mb-6">
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+        <main id="tutors" className="max-w-[1060px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-10 sm:pb-14">
+          <div className="mb-5">
+            <h2 className="text-[22px] sm:text-[28px] font-bold text-[#121212] tracking-tight leading-tight">
               {searchSubject
                 ? `${searchSubject} 家教課程`
                 : isOnlineLocation(searchLocation)
@@ -285,24 +335,18 @@ export default function HomePage() {
                     ? `${searchLocation}熱門家教課程`
                     : '探索全台家教課程'}
             </h2>
-            <p className="text-xs text-white/45 mt-1">
-              {isLoading
-                ? '正在載入課程…'
-                : `共 ${filteredTutors.length} 門課程 · 許多導師提供首堂免費體驗`}
-              {!isFromSupabase && !isLoading ? ' · 示範資料' : ''}
-            </p>
           </div>
 
           {!isFromSupabase && !isLoading && (
-            <div className="mb-5 p-3 bg-amber-500/10 border border-amber-400/25 rounded-xl flex items-start justify-between gap-3 text-xs text-amber-100">
+            <div className="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-start justify-between gap-3 text-xs text-amber-900">
               <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                 <span>目前為備用假資料。請確認 `.env.local` 已填入 Supabase 金鑰。</span>
               </div>
               <button
                 type="button"
                 onClick={() => void loadData()}
-                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white/10 hover:bg-white/15 border border-white/15 rounded-lg text-amber-50 font-semibold text-[11px] flex-shrink-0 transition cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-amber-200 rounded-full text-amber-900 font-semibold text-[11px] flex-shrink-0 transition cursor-pointer"
               >
                 <RefreshCw className="w-3 h-3" />
                 重新整理
@@ -310,19 +354,20 @@ export default function HomePage() {
             </div>
           )}
 
+          {/* Superprof：桌面固定三欄（不經兩欄）；僅窄螢幕單欄 */}
           {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-7">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6 lg:gap-8">
               {[1, 2, 3, 4, 5, 6].map((skeletonId) => (
                 <div key={skeletonId} className="animate-pulse">
-                  <div className="aspect-[3/4] rounded-3xl bg-white/10" />
-                  <div className="mt-3 h-4 w-2/3 rounded bg-white/10" />
-                  <div className="mt-2 h-3 w-full rounded bg-white/5" />
-                  <div className="mt-2 h-3 w-1/2 rounded bg-white/5" />
+                  <div className="aspect-square rounded-[32px] bg-[#f0f0f0]" />
+                  <div className="mt-3 h-4 w-2/3 rounded bg-[#f0f0f0]" />
+                  <div className="mt-2 h-3 w-full rounded bg-[#f5f5f5]" />
+                  <div className="mt-2 h-3 w-1/2 rounded bg-[#f5f5f5]" />
                 </div>
               ))}
             </div>
           ) : filteredTutors.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-7">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6 lg:gap-8">
               {filteredTutors.map((tutor) => (
                 <TutorCard
                   key={tutor.id}
@@ -352,7 +397,7 @@ export default function HomePage() {
         </main>
       </div>
 
-      <SiteFooter variant="dark" />
+      <SiteFooter variant="light" />
 
       <UnlockedTutorsDrawer
         isOpen={isContactedDrawerOpen}
@@ -385,10 +430,16 @@ export default function HomePage() {
         onClose={() => setIsAuthModalOpen(false)}
         onSuccess={handleAuthSuccess}
         intentHint={
-          selectedTutor
-            ? `登入後開通 Student Pass，即可聯繫「${selectedTutor.name}」（解鎖全平台、可隨時取消）。`
-            : null
+          selectedTutor ? authIntentForTutor(selectedTutor.name) : null
         }
+      />
+
+      <BindEmailModal
+        isOpen={isBindEmailOpen}
+        onClose={() => setIsBindEmailOpen(false)}
+        onBound={() => {
+          void hydrate();
+        }}
       />
     </div>
   );

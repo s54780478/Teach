@@ -38,9 +38,19 @@ import {
   TEACHING_MODE_OPTIONS,
   modesFromLegacyMode,
 } from '@/lib/teachingModes';
+import {
+  HEADLINE_MAX,
+  clampHeadline,
+  digitsOnlyAmount,
+  digitsOnlyPhone,
+  validateHeadlineRequired,
+  validateHourlyRate,
+  validatePhoneOptional,
+} from '@/lib/formHelpers';
 import { Header } from '@/components/Header';
 import { AuthModal } from '@/components/AuthModal';
 import { SiteFooter } from '@/components/SiteFooter';
+import { LogoHomeLink } from '@/components/LogoHomeLink';
 import { useStudentPass } from '@/hooks/useStudentPass';
 
 const MODE_LABEL: Record<TeachingMode, string> = {
@@ -224,8 +234,27 @@ export default function TutorDashboardPage() {
       showToast('請填寫姓名');
       return;
     }
+    const rateErr = validateHourlyRate(profileForm.hourlyRate);
+    if (rateErr) {
+      showToast(rateErr);
+      return;
+    }
     if (!Number.isFinite(rate) || rate <= 0) {
       showToast('請輸入有效時薪');
+      return;
+    }
+    if (profileForm.teachingModes.length === 0) {
+      showToast('請至少選擇一種授課方式');
+      return;
+    }
+    const headlineErr = validateHeadlineRequired(profileForm.headline);
+    if (headlineErr) {
+      showToast(headlineErr);
+      return;
+    }
+    const phoneErr = validatePhoneOptional(profileForm.phone);
+    if (phoneErr) {
+      showToast(phoneErr);
       return;
     }
 
@@ -235,14 +264,6 @@ export default function TutorDashboardPage() {
       .filter(Boolean);
 
     setIsSavingProfile(true);
-    if (profileForm.teachingModes.length === 0) {
-      showToast('請至少選擇一種授課方式');
-      return;
-    }
-    if (!profileForm.headline.trim()) {
-      showToast('請填寫個人頭銜（一句話介紹）');
-      return;
-    }
 
     const profilePayload = {
       name: profileForm.name,
@@ -424,11 +445,13 @@ export default function TutorDashboardPage() {
         </label>
         <input
           id={`${idPrefix}-rate`}
-          type="number"
-          min={100}
-          step={50}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           value={form.hourlyRate}
-          onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
+          onChange={(e) =>
+            setForm({ ...form, hourlyRate: digitsOnlyAmount(e.target.value) })
+          }
           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
         />
       </div>
@@ -513,13 +536,10 @@ export default function TutorDashboardPage() {
       />
 
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-10">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition mb-6"
-        >
+        <LogoHomeLink className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition mb-6">
           <ArrowLeft className="w-4 h-4" />
           回首頁
-        </Link>
+        </LogoHomeLink>
 
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
           <div>
@@ -663,26 +683,31 @@ export default function TutorDashboardPage() {
                         </label>
                         <input
                           id="pf-rate"
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           value={profileForm.hourlyRate}
                           onChange={(e) =>
-                            setProfileForm({ ...profileForm, hourlyRate: e.target.value })
+                            setProfileForm({
+                              ...profileForm,
+                              hourlyRate: digitsOnlyAmount(e.target.value),
+                            })
                           }
                           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                         />
                       </div>
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-medium text-slate-500 mb-1" htmlFor="pf-headline">
-                          個人頭銜 (Headline) · {profileForm.headline.length}/50
+                          個人頭銜 (Headline) · {profileForm.headline.length}/{HEADLINE_MAX}
                         </label>
                         <input
                           id="pf-headline"
-                          maxLength={50}
+                          maxLength={HEADLINE_MAX}
                           value={profileForm.headline}
                           onChange={(e) =>
                             setProfileForm({
                               ...profileForm,
-                              headline: e.target.value.slice(0, 50),
+                              headline: clampHeadline(e.target.value),
                             })
                           }
                           placeholder="例：10 年國立大學物理系講師"
@@ -775,8 +800,17 @@ export default function TutorDashboardPage() {
                         </label>
                         <input
                           id="pf-phone"
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel"
                           value={profileForm.phone}
-                          onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                          onChange={(e) =>
+                            setProfileForm({
+                              ...profileForm,
+                              phone: digitsOnlyPhone(e.target.value, false),
+                            })
+                          }
+                          placeholder="0912345678"
                           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                         />
                       </div>
