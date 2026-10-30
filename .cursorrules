@@ -1,0 +1,105 @@
+# idaltu — Cursor 永久開發規範（Always Apply）
+
+本檔彙整自 `AGENTS.md`、`README.md` 與目前程式碼迭代狀態。
+後續功能開發、UI 調整與資料庫連動，皆須遵守下列核心原則。
+
+---
+
+## 1. 產品定位（不可偏離）
+
+- **產品名**：`idaltu`（小寫極簡文字 Logo，搭配品牌珊瑚紅識別點）。
+- **市場**：台灣在地家教與多元技能媒合平台（MVP）。
+- **對標**：全球 Superprof 的 UI／媒合架構，並本土化為：
+  - 面授到府／咖啡廳教學
+  - 高清線上遠距
+  - 精密行政區定位（例：台北市大安區、新北板橋）
+
+---
+
+## 2. 商業模式：買方解鎖制（Buyer Unlock Model）— 核心鎖定
+
+與傳統家教仲介抽成不同，**永遠採 Superprof 式「Student Pass 學生通行證」月費訂閱制**：
+
+| 角色 | 原則 |
+|------|------|
+| 導師（Supply） | 免費刊登課程；**不抽成**實體／線上鐘點費 |
+| 學員（Demand） | 免費瀏覽課程；須訂閱 **Student Pass** 才能無限次查看全台導師 LINE／電話 |
+
+### 雙向信任基石（產品必備訊號）
+
+1. **Verified Badge**：學歷／身份官方查驗（頂大或專業證照審核）。
+2. **首堂免費試教（1st Lesson Free）**：降低試聽門檻。
+3. **行政區 + 授課模式**：地區標籤與「全部／面授／線上」切換並存。
+
+### 訂閱與權限流程（迭代時不可破壞）
+
+1. 未登入點「解鎖聯絡方式」→ 先開 `AuthModal`。
+2. 已登入但**未訂閱** → 開 `StudentPassModal`（升級 Student Pass）。
+3. **已訂閱** → 可全站通行查看聯絡方式（`ContactViewModal`）；勿再做單次微付費解鎖。
+4. 導師「刊登課程」走 `/tutor/apply`；**禁止「廣告」字眼**；Header CTA 為「刊登課程」。
+5. 首頁視覺對齊 Superprof：暗色 Hero、珊瑚紅 `#FF5A5F`、三欄直式課程卡。
+
+---
+
+## 3. 技術棧與架構
+
+- **框架**：Next.js 15+ App Router（`src/app/`）
+- **語言**：TypeScript 5+，**禁止隨意使用 `any`**
+- **樣式**：Tailwind CSS；品牌主色 `brand-500` = `#ff5454`（Superprof 珊瑚紅）
+- **圖示**：`lucide-react`
+- **後端／資料**：Supabase（Auth、`tutors`、`unlocks`、`profiles`）；schema 見 `supabase/`
+- **UI 風格**：現代簡約、高質感圓角（`rounded-2xl`／`rounded-3xl`）、精緻微互動與卡片陰影
+
+### 目錄慣例（有新增請同步文件）
+
+```text
+src/
+  app/                 # 路由頁（含 tutor/apply）
+  components/          # Header、TutorCard、CategoryFilter、Auth/Unlock Modal 等
+  data/mockTutors.ts   # 降級假資料
+  lib/                 # supabaseClient、tutorService
+  types/tutor.ts       # Tutor 等嚴格型別
+supabase/              # schema.sql 與 RLS policies
+```
+
+---
+
+## 4. UI／UX 產品要求（Superprof 在地化）
+
+- Header：極簡 `idaltu` + 膠囊雙核心搜尋（科目／地區）+ 授課模式切換。
+- TutorCard：驗證標章、學歷、專長標籤、地區、時薪、首堂免費、解鎖 CTA。
+- 列表：響應式（Desktop 多欄、Mobile 單欄）；分類膠囊、首堂免費篩選、排序。
+- **Mobile-First**：所有元件兼顧桌面與行動。
+- **無障礙**：語意化標籤（如卡片 `<article>`）、清楚的 `label`／`aria-label`。
+- 既有設計系統內迭代時，**延續**現有視覺語言（勿無故換成另一套 AI 預設風格）。
+
+---
+
+## 5. 資料與型別守則
+
+- 導師資料結構以 `src/types/tutor.ts` 的 `Tutor` 為準。
+- Props／DB mapping 維持嚴格型別；DB 列對應邏輯集中在 `src/lib/tutorService.ts`。
+- Supabase 讀寫失敗時可降級 `MOCK_TUTORS`，但不可默默改掉商業流程。
+- RLS：使用者只能 insert／update **自己的** `tutors` 列（`auth.uid()::text = id`）。
+
+---
+
+## 6. 開發協作原則
+
+- **核心記憶已鎖定**：買方解鎖制、Superprof UI、頂大學歷驗證、首堂免費試聽 — 不得在未討論下改掉商業假設。
+- **高效交付**：以功能與 UX 為主，不需頻繁寫進度日誌到檔案。
+- 回覆使用者時使用**繁體中文**。
+- 不主動 commit／push，除非使用者明確要求。
+- 機密：`.env.local` 永不提交；環境變數以 `.env.example` 為範本說明。
+
+---
+
+## 7. 迭代時的「永遠記住」檢查清單
+
+開發任何功能前快速自問：
+
+- [ ] 是否仍符合「導師不抽成、學員解鎖才聯繫」？
+- [ ] 聯絡資訊是否仍受解鎖／登入保護？
+- [ ] 是否沿用 `brand-500`／既有元件風格與型別？
+- [ ] 是否 Mobile-First 且有基本 a11y？
+- [ ] 導師寫入是否綁定 Auth UID？
