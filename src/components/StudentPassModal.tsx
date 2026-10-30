@@ -31,9 +31,21 @@ interface StudentPassModalProps {
 }
 
 const BENEFITS = [
-  { icon: Infinity, title: '無限次聯繫全台導師', desc: '訂閱期間不限次數查看 LINE／電話' },
-  { icon: MessageCircle, title: '直接開聊排課', desc: '學費與導師私下結算，平台不抽成鐘點費' },
-  { icon: ShieldCheck, title: '驗證師資更安心', desc: '優先聯繫身份／學歷已驗證與超快回覆導師' },
+  {
+    icon: Infinity,
+    title: '解鎖全平台導師聯繫權限',
+    desc: '訂閱期間可無限次查看全台導師 LINE／電話並發起諮詢',
+  },
+  {
+    icon: MessageCircle,
+    title: '導師接受請求後才扣款',
+    desc: '送出聯繫後由導師確認；鐘點費私下結算，平台不抽成',
+  },
+  {
+    icon: ShieldCheck,
+    title: '可隨時取消',
+    desc: 'Student Pass 可於帳戶中隨時取消，下期不再續扣',
+  },
 ];
 
 export const StudentPassModal: React.FC<StudentPassModalProps> = ({
@@ -144,8 +156,8 @@ export const StudentPassModal: React.FC<StudentPassModalProps> = ({
             <div className="rounded-xl bg-brand-50 border border-brand-200/70 px-4 py-3 flex items-start gap-2.5">
               <MessageCircle className="w-4 h-4 text-brand-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-brand-800 leading-relaxed">
-                即將聯繫 <strong>{tutorName}</strong>
-                。開通 Student Pass 後即可查看 LINE／電話並直接排課。
+                聯繫／預約 <strong>{tutorName}</strong>
+                需先開通 Student Pass，解鎖全平台導師聯繫權限。
               </p>
             </div>
           )}
@@ -160,12 +172,13 @@ export const StudentPassModal: React.FC<StudentPassModalProps> = ({
           ) : (
             <div>
               <p className="text-sm font-bold text-slate-900 leading-snug">
-                訂閱 Student Pass，即可無限次聯繫全台導師
+                開通 Student Pass，解鎖全平台導師聯繫權限
               </p>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                導師接受請求後才扣款 · 可隨時取消
                 {paymentConfigured
-                  ? '透過藍新金流安全刷卡；授權成功後立即開通並寫入訂閱狀態。'
-                  : '目前為演示模式（尚未設定藍新 HashKey／HashIV），可一鍵寫入 subscriptions。'}
+                  ? ' · 藍新金流安全付款'
+                  : ' · 目前為演示模式，可一鍵體驗開通'}
               </p>
             </div>
           )}

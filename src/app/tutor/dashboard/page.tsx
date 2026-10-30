@@ -26,7 +26,18 @@ import {
   type CourseEditInput,
   type TutorCourse,
 } from '@/lib/tutorService';
-import type { TeachingMode, Tutor } from '@/types/tutor';
+import type {
+  FreeLessonMinutes,
+  TeachingMode,
+  TeachingModeOption,
+  Tutor,
+} from '@/types/tutor';
+import {
+  DEFAULT_RESPONSE_TIME,
+  FREE_LESSON_MINUTES,
+  TEACHING_MODE_OPTIONS,
+  modesFromLegacyMode,
+} from '@/lib/teachingModes';
 import { Header } from '@/components/Header';
 import { AuthModal } from '@/components/AuthModal';
 import { SiteFooter } from '@/components/SiteFooter';
@@ -70,12 +81,14 @@ interface ProfileFormState {
   subjectCategory: string;
   city: string;
   district: string;
-  mode: TeachingMode;
+  teachingModes: TeachingModeOption[];
   hourlyRate: string;
   lineId: string;
   phone: string;
   email: string;
   firstLessonFree: boolean;
+  freeLessonMinutes: FreeLessonMinutes;
+  responseTime: string;
 }
 
 function courseToForm(course: TutorCourse): EditFormState {
@@ -95,19 +108,24 @@ function courseToForm(course: TutorCourse): EditFormState {
 function profileToForm(tutor: Tutor): ProfileFormState {
   return {
     name: tutor.name,
-    headline: tutor.headline,
+    headline: tutor.headline.slice(0, 50),
     bio: tutor.bio,
     avatarUrl: tutor.avatarUrl,
     specialtyTags: tutor.specialtyTags.join('、'),
     subjectCategory: tutor.subjectCategory || '其他',
     city: tutor.location.city,
     district: tutor.location.district,
-    mode: tutor.mode,
+    teachingModes:
+      tutor.teachingModes?.length > 0
+        ? tutor.teachingModes
+        : modesFromLegacyMode(tutor.mode),
     hourlyRate: String(tutor.hourlyRate || ''),
     lineId: tutor.contact.lineId === '未提供' ? '' : tutor.contact.lineId,
     phone: tutor.contact.phone === '未提供' ? '' : tutor.contact.phone,
     email: tutor.contact.email === '未提供' ? '' : tutor.contact.email,
     firstLessonFree: tutor.firstLessonFree,
+    freeLessonMinutes: tutor.freeLessonMinutes || 60,
+    responseTime: tutor.responseTime || DEFAULT_RESPONSE_TIME,
   };
 }
 
@@ -217,40 +235,42 @@ export default function TutorDashboardPage() {
       .filter(Boolean);
 
     setIsSavingProfile(true);
-    let result = await updateTutorDashboardProfile(currentUser.id, {
+    if (profileForm.teachingModes.length === 0) {
+      showToast('請至少選擇一種授課方式');
+      return;
+    }
+    if (!profileForm.headline.trim()) {
+      showToast('請填寫個人頭銜（一句話介紹）');
+      return;
+    }
+
+    const profilePayload = {
       name: profileForm.name,
-      headline: profileForm.headline,
+      headline: profileForm.headline.slice(0, 50),
       bio: profileForm.bio,
       avatarUrl: profileForm.avatarUrl,
       specialtyTags: tags,
       subjectCategory: profileForm.subjectCategory,
       city: profileForm.city,
       district: profileForm.district,
-      mode: profileForm.mode,
+      teachingModes: profileForm.teachingModes,
       hourlyRate: rate,
       lineId: profileForm.lineId,
       phone: profileForm.phone,
       email: profileForm.email || currentUser.email || undefined,
       firstLessonFree: profileForm.firstLessonFree,
-    });
+      freeLessonMinutes: profileForm.freeLessonMinutes,
+      responseTime: profileForm.responseTime || DEFAULT_RESPONSE_TIME,
+    };
+
+    let result = await updateTutorDashboardProfile(currentUser.id, profilePayload);
 
     // 尚無履歷列時改走 upsert
     if (!result.success && !profile) {
       result = await upsertTutorProfile(currentUser.id, {
-        name: profileForm.name,
-        headline: profileForm.headline || `${profileForm.name} 的課程`,
-        bio: profileForm.bio,
+        ...profilePayload,
         degree: '',
-        specialtyTags: tags,
-        subjectCategory: profileForm.subjectCategory,
-        city: profileForm.city,
-        district: profileForm.district,
-        mode: profileForm.mode,
-        hourlyRate: rate,
-        firstLessonFree: profileForm.firstLessonFree,
-        lineId: profileForm.lineId,
-        phone: profileForm.phone,
-        email: profileForm.email || currentUser.email || undefined,
+        headline: profilePayload.headline || `${profileForm.name} 的課程`,
       });
     }
 
@@ -582,12 +602,14 @@ export default function TutorDashboardPage() {
                           subjectCategory: '其他',
                           city: '台北市',
                           district: '',
-                          mode: 'hybrid',
+                          teachingModes: ['online', 'in_person', 'student_home'],
                           hourlyRate: '800',
                           lineId: '',
                           phone: '',
                           email: currentUser.email || '',
                           firstLessonFree: true,
+                          freeLessonMinutes: 60,
+                          responseTime: DEFAULT_RESPONSE_TIME,
                         })
                       }
                       className="bg-brand-500 hover:bg-brand-600 text-white text-sm font-bold px-5 py-2.5 rounded-full cursor-pointer"
@@ -651,14 +673,19 @@ export default function TutorDashboardPage() {
                       </div>
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-medium text-slate-500 mb-1" htmlFor="pf-headline">
-                          標題標語
+                          個人頭銜 (Headline) · {profileForm.headline.length}/50
                         </label>
                         <input
                           id="pf-headline"
+                          maxLength={50}
                           value={profileForm.headline}
                           onChange={(e) =>
-                            setProfileForm({ ...profileForm, headline: e.target.value })
+                            setProfileForm({
+                              ...profileForm,
+                              headline: e.target.value.slice(0, 50),
+                            })
                           }
+                          placeholder="例：10 年國立大學物理系講師"
                           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                         />
                       </div>
@@ -753,25 +780,111 @@ export default function TutorDashboardPage() {
                           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                         />
                       </div>
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-slate-500 mb-1" htmlFor="pf-mode">
-                          授課方式
+                      <div className="sm:col-span-2 space-y-2">
+                        <p className="block text-xs font-medium text-slate-500">
+                          授課方式（可多選）
+                        </p>
+                        <div className="grid sm:grid-cols-3 gap-2">
+                          {TEACHING_MODE_OPTIONS.map((opt) => {
+                            const checked = profileForm.teachingModes.includes(opt.id);
+                            return (
+                              <label
+                                key={opt.id}
+                                className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition ${
+                                  checked
+                                    ? 'border-brand-500 bg-brand-50'
+                                    : 'border-slate-200 bg-white hover:border-slate-300'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    const next = checked
+                                      ? profileForm.teachingModes.filter((m) => m !== opt.id)
+                                      : [...profileForm.teachingModes, opt.id];
+                                    setProfileForm({ ...profileForm, teachingModes: next });
+                                  }}
+                                  className="mt-0.5 w-4 h-4 accent-brand-500"
+                                />
+                                <span>
+                                  <span className="block text-sm font-semibold text-slate-900">
+                                    {opt.label}
+                                  </span>
+                                  <span className="block text-[11px] text-slate-400">
+                                    {opt.hint}
+                                  </span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-3">
+                        <label className="flex items-center justify-between gap-3 cursor-pointer">
+                          <span className="text-sm text-slate-800 font-medium">
+                            第一堂課免費
+                            <span className="block text-[11px] text-slate-400 font-normal mt-0.5">
+                              預設開啟 · 可選 30／45／60 分鐘體驗
+                            </span>
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={profileForm.firstLessonFree}
+                            onChange={(e) =>
+                              setProfileForm({
+                                ...profileForm,
+                                firstLessonFree: e.target.checked,
+                              })
+                            }
+                            className="w-5 h-5 accent-brand-500"
+                          />
                         </label>
-                        <select
-                          id="pf-mode"
-                          value={profileForm.mode}
+                        {profileForm.firstLessonFree && (
+                          <div className="flex flex-wrap gap-2">
+                            {FREE_LESSON_MINUTES.map((mins) => (
+                              <button
+                                key={mins}
+                                type="button"
+                                onClick={() =>
+                                  setProfileForm({
+                                    ...profileForm,
+                                    freeLessonMinutes: mins,
+                                  })
+                                }
+                                className={`px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer ${
+                                  profileForm.freeLessonMinutes === mins
+                                    ? 'bg-brand-500 text-white border-brand-500'
+                                    : 'bg-white text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {mins} 分鐘
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label
+                          className="block text-xs font-medium text-slate-500 mb-1"
+                          htmlFor="pf-response"
+                        >
+                          平均回覆時間（卡片顯示）
+                        </label>
+                        <input
+                          id="pf-response"
+                          value={profileForm.responseTime}
                           onChange={(e) =>
                             setProfileForm({
                               ...profileForm,
-                              mode: e.target.value as TeachingMode,
+                              responseTime: e.target.value,
                             })
                           }
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500/30"
-                        >
-                          <option value="in-person">面對面授課</option>
-                          <option value="online">線上教學</option>
-                          <option value="hybrid">實體 + 線上</option>
-                        </select>
+                          placeholder={DEFAULT_RESPONSE_TIME}
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                        />
                       </div>
                     </div>
 

@@ -1,8 +1,21 @@
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
-import { TeachingMode, Tutor } from '@/types/tutor';
+import type {
+  FreeLessonMinutes,
+  TeachingMode,
+  TeachingModeOption,
+  Tutor,
+} from '@/types/tutor';
 import { MOCK_TUTORS } from '@/data/mockTutors';
+import {
+  DEFAULT_RESPONSE_TIME,
+  deriveLegacyMode,
+  minutesToResponseTime,
+  normalizeTeachingModes,
+  responseTimeToMinutes,
+  tutorMatchesModeFilter,
+} from '@/lib/teachingModes';
 
-/** Supabase tutors 列（與 schema.sql 對齊） */
+/** Supabase tutors 列（與 schema + tutor_superprof_fields.sql 對齊） */
 export interface TutorDbRow {
   id: string;
   name: string;
@@ -16,8 +29,11 @@ export interface TutorDbRow {
   district: string | null;
   display_location: string | null;
   mode: string | null;
+  teaching_modes?: string[] | null;
   hourly_rate: number;
   first_lesson_free: boolean | null;
+  free_lesson_minutes?: number | null;
+  response_time?: string | null;
   response_speed_minutes: number | null;
   taught_hours: number | null;
   rating: number | null;
@@ -27,6 +43,9 @@ export interface TutorDbRow {
   phone: string | null;
   email: string | null;
   is_published?: boolean | null;
+  is_verified?: boolean | null;
+  is_identity_verified?: boolean | null;
+  is_diploma_verified?: boolean | null;
 }
 
 export type CourseStatus = 'active' | 'paused';
@@ -105,31 +124,61 @@ export interface TutorProfileInput {
   subjectCategory: string;
   city: string;
   district: string;
-  mode: TeachingMode;
+  /** 相容欄位；若有 teachingModes 則由 modes 推導 */
+  mode?: TeachingMode;
+  teachingModes: TeachingModeOption[];
   hourlyRate: number;
   firstLessonFree: boolean;
+  freeLessonMinutes?: FreeLessonMinutes;
+  responseTime?: string;
   lineId: string;
   phone: string;
   email?: string;
 }
 
+function parseFreeLessonMinutes(raw: unknown): FreeLessonMinutes {
+  const n = Number(raw);
+  if (n === 30 || n === 45 || n === 60) return n;
+  return 60;
+}
+
 export function mapDbRowToTutor(row: TutorDbRow): Tutor {
-  const mode: TeachingMode =
+  const legacyMode: TeachingMode =
     row.mode === 'in-person' || row.mode === 'online' || row.mode === 'hybrid'
       ? row.mode
       : 'hybrid';
+  const teachingModes = normalizeTeachingModes(row.teaching_modes, legacyMode);
+  const mode = deriveLegacyMode(teachingModes);
+  const responseSpeedMinutes = Number(row.response_speed_minutes) || 60;
+  const responseTime =
+    (row.response_time && row.response_time.trim()) ||
+    minutesToResponseTime(responseSpeedMinutes) ||
+    DEFAULT_RESPONSE_TIME;
+
+  const identityVerified = Boolean(
+    row.is_identity_verified ?? row.is_verified ?? false
+  );
+  const diplomaVerified = Boolean(
+    row.is_diploma_verified ?? row.is_verified ?? false
+  );
+  const isVerified = Boolean(
+    row.is_verified || identityVerified || diplomaVerified
+  );
 
   return {
     id: row.id,
     name: row.name,
-    headline: row.headline || '',
+    headline: (row.headline || '').slice(0, 50),
     bio: row.bio || '',
-    avatarUrl: row.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
+    avatarUrl:
+      row.avatar_url ||
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
     verification: {
-      isIdentityVerified: true,
-      isDiplomaVerified: true,
+      isIdentityVerified: identityVerified,
+      isDiplomaVerified: diplomaVerified,
       degree: row.degree || '官方認證學歷',
     },
+    isVerified,
     specialtyTags: Array.isArray(row.specialty_tags) ? row.specialty_tags : [],
     subjectCategory: row.subject_category || '未分類',
     location: {
@@ -138,9 +187,12 @@ export function mapDbRowToTutor(row: TutorDbRow): Tutor {
       displayLocation: row.display_location || '全台線上',
     },
     mode,
+    teachingModes,
     hourlyRate: Number(row.hourly_rate) || 800,
-    firstLessonFree: Boolean(row.first_lesson_free),
-    responseSpeedMinutes: Number(row.response_speed_minutes) || 15,
+    firstLessonFree: row.first_lesson_free !== false,
+    freeLessonMinutes: parseFreeLessonMinutes(row.free_lesson_minutes),
+    responseTime,
+    responseSpeedMinutes,
     taughtHours: Number(row.taught_hours) || 100,
     reviews: {
       rating: Number(row.rating) || 5.0,
@@ -195,9 +247,18 @@ export async function upsertTutorProfile(
 
   const avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(input.name.trim())}&backgroundColor=f9a8d4`;
 
+  const teachingModes = normalizeTeachingModes(
+    input.teachingModes,
+    input.mode || 'hybrid'
+  );
+  const mode = deriveLegacyMode(teachingModes);
+  const responseTime =
+    (input.responseTime && input.responseTime.trim()) || DEFAULT_RESPONSE_TIME;
+  const freeLessonMinutes = input.freeLessonMinutes ?? 60;
+
   const sharedFields = {
     name: input.name.trim(),
-    headline: input.headline.trim(),
+    headline: input.headline.trim().slice(0, 50),
     bio: input.bio.trim(),
     degree: input.degree.trim() || null,
     specialty_tags: input.specialtyTags,
@@ -205,9 +266,13 @@ export async function upsertTutorProfile(
     city: input.city.trim(),
     district: input.district.trim() || null,
     display_location: displayLocation,
-    mode: input.mode,
+    mode,
+    teaching_modes: teachingModes,
     hourly_rate: input.hourlyRate,
     first_lesson_free: input.firstLessonFree,
+    free_lesson_minutes: freeLessonMinutes,
+    response_time: responseTime,
+    response_speed_minutes: responseTimeToMinutes(responseTime),
     line_id: input.lineId.trim() || null,
     phone: input.phone.trim() || null,
     email: input.email?.trim() || null,
@@ -226,6 +291,14 @@ export async function upsertTutorProfile(
 
       if (error) {
         console.error('⚠️ 更新導師履歷失敗:', error.message);
+        // 若尚未執行 tutor_superprof_fields.sql，降級寫入舊欄位
+        if (/teaching_modes|free_lesson_minutes|response_time/i.test(error.message)) {
+          const { teaching_modes: _tm, free_lesson_minutes: _fl, response_time: _rt, ...legacy } =
+            sharedFields;
+          const retry = await supabase.from('tutors').update(legacy).eq('id', userId);
+          if (retry.error) return { success: false, error: retry.error.message };
+          return { success: true };
+        }
         return { success: false, error: error.message };
       }
     } else {
@@ -235,14 +308,30 @@ export async function upsertTutorProfile(
           ...sharedFields,
           rating: 5.0,
           review_count: 0,
-          response_speed_minutes: 15,
           taught_hours: 0,
           badge: '新星特選',
+          is_verified: false,
         },
       ]);
 
       if (error) {
         console.error('⚠️ 新增導師履歷失敗:', error.message);
+        if (/teaching_modes|free_lesson_minutes|response_time/i.test(error.message)) {
+          const { teaching_modes: _tm, free_lesson_minutes: _fl, response_time: _rt, ...legacy } =
+            sharedFields;
+          const retry = await supabase.from('tutors').insert([
+            {
+              id: userId,
+              ...legacy,
+              rating: 5.0,
+              review_count: 0,
+              taught_hours: 0,
+              badge: '新星特選',
+            },
+          ]);
+          if (retry.error) return { success: false, error: retry.error.message };
+          return { success: true };
+        }
         return { success: false, error: error.message };
       }
     }
@@ -410,9 +499,11 @@ export async function searchTutors(
     }
     if (typeof minRate === 'number') next = next.filter((t) => t.hourlyRate >= minRate);
     if (typeof maxRate === 'number') next = next.filter((t) => t.hourlyRate <= maxRate);
-    if (mode === 'in-person') next = next.filter((t) => t.mode === 'in-person' || t.mode === 'hybrid');
-    if (mode === 'online') next = next.filter((t) => t.mode === 'online' || t.mode === 'hybrid');
-    if (mode === 'hybrid') next = next.filter((t) => t.mode === 'hybrid');
+    if (mode === 'in-person' || mode === 'online' || mode === 'hybrid') {
+      next = next.filter((t) =>
+        tutorMatchesModeFilter(t.teachingModes || [], t.mode, mode)
+      );
+    }
 
     next.sort((a, b) => {
       if (sortBy === 'rating') return b.reviews.rating - a.reviews.rating;
@@ -549,12 +640,15 @@ export interface TutorDashboardProfileInput {
   subjectCategory: string;
   city: string;
   district: string;
-  mode: TeachingMode;
+  mode?: TeachingMode;
+  teachingModes: TeachingModeOption[];
   hourlyRate: number;
   lineId: string;
   phone: string;
   email?: string;
   firstLessonFree?: boolean;
+  freeLessonMinutes?: FreeLessonMinutes;
+  responseTime?: string;
 }
 
 export async function updateTutorDashboardProfile(
@@ -570,29 +664,53 @@ export async function updateTutorDashboardProfile(
       input.avatarUrl.trim() ||
       `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(input.name.trim())}&backgroundColor=f9a8d4`;
 
-    const { error } = await supabase
-      .from('tutors')
-      .update({
-        name: input.name.trim(),
-        headline: input.headline.trim(),
-        bio: input.bio.trim(),
-        avatar_url: avatarUrl,
-        specialty_tags: input.specialtyTags,
-        subject_category: input.subjectCategory.trim() || null,
-        city: input.city.trim() || null,
-        district: input.district.trim() || null,
-        display_location: displayLocation || null,
-        mode: input.mode,
-        hourly_rate: input.hourlyRate,
-        line_id: input.lineId.trim() || null,
-        phone: input.phone.trim() || null,
-        email: input.email?.trim() || null,
-        first_lesson_free: input.firstLessonFree ?? true,
-        is_published: true,
-      })
-      .eq('id', userId);
+    const teachingModes = normalizeTeachingModes(
+      input.teachingModes,
+      input.mode || 'hybrid'
+    );
+    const mode = deriveLegacyMode(teachingModes);
+    const responseTime =
+      (input.responseTime && input.responseTime.trim()) || DEFAULT_RESPONSE_TIME;
 
-    if (error) return { success: false, error: error.message };
+    const payload = {
+      name: input.name.trim(),
+      headline: input.headline.trim().slice(0, 50),
+      bio: input.bio.trim(),
+      avatar_url: avatarUrl,
+      specialty_tags: input.specialtyTags,
+      subject_category: input.subjectCategory.trim() || null,
+      city: input.city.trim() || null,
+      district: input.district.trim() || null,
+      display_location: displayLocation || null,
+      mode,
+      teaching_modes: teachingModes,
+      hourly_rate: input.hourlyRate,
+      line_id: input.lineId.trim() || null,
+      phone: input.phone.trim() || null,
+      email: input.email?.trim() || null,
+      first_lesson_free: input.firstLessonFree ?? true,
+      free_lesson_minutes: input.freeLessonMinutes ?? 60,
+      response_time: responseTime,
+      response_speed_minutes: responseTimeToMinutes(responseTime),
+      is_published: true,
+    };
+
+    const { error } = await supabase.from('tutors').update(payload).eq('id', userId);
+
+    if (error) {
+      if (/teaching_modes|free_lesson_minutes|response_time/i.test(error.message)) {
+        const {
+          teaching_modes: _a,
+          free_lesson_minutes: _b,
+          response_time: _c,
+          ...legacy
+        } = payload;
+        const retry = await supabase.from('tutors').update(legacy).eq('id', userId);
+        if (retry.error) return { success: false, error: retry.error.message };
+        return { success: true };
+      }
+      return { success: false, error: error.message };
+    }
     return { success: true };
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : '更新失敗' };

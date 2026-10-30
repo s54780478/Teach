@@ -11,7 +11,9 @@ import {
   GraduationCap,
   Monitor,
   MapPin,
+  Home,
   MessageCircle,
+  Calendar,
 } from 'lucide-react';
 import { Tutor } from '@/types/tutor';
 import { getTutorTrustFlags } from '@/lib/tutorTrust';
@@ -27,6 +29,12 @@ interface TutorCardProps {
   onContact: (tutor: Tutor) => void;
 }
 
+function ModeIcon({ tag }: { tag: string }) {
+  if (tag.includes('線上')) return <Monitor className="w-2.5 h-2.5" />;
+  if (tag.includes('到府')) return <Home className="w-2.5 h-2.5" />;
+  return <MapPin className="w-2.5 h-2.5" />;
+}
+
 export const TutorCard: React.FC<TutorCardProps> = ({
   tutor,
   isUnlocked = false,
@@ -34,9 +42,11 @@ export const TutorCard: React.FC<TutorCardProps> = ({
 }) => {
   const [liked, setLiked] = useState(false);
   const trust = getTutorTrustFlags(tutor);
-  const modeTags = teachingModeTags(tutor.mode);
-  const modeShort = teachingModeShortLabel(tutor.mode);
-  const responseLabel = formatResponseLabel(tutor.responseSpeedMinutes);
+  const modeTags = teachingModeTags(tutor.mode, tutor.teachingModes);
+  const modeShort = teachingModeShortLabel(tutor.mode, tutor.teachingModes);
+  const responseLabel =
+    tutor.responseTime || formatResponseLabel(tutor.responseSpeedMinutes);
+  const showVerified = tutor.isVerified || trust.isVerified;
   const profileHref = `/tutor/${tutor.id}`;
   const ratingDisplay =
     tutor.reviews.reviewCount > 0 ? tutor.reviews.rating.toFixed(1) : null;
@@ -56,12 +66,12 @@ export const TutorCard: React.FC<TutorCardProps> = ({
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/10" />
 
-        {/* 左上：首堂免費 + 驗證 */}
         <div className="absolute top-3 left-3 right-12 z-10 flex flex-col items-start gap-1.5">
           {tutor.firstLessonFree && (
             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-white bg-brand-500 border border-brand-400/40 px-2.5 py-1 rounded-full shadow-lg shadow-brand-500/30">
               <Gift className="w-3 h-3" strokeWidth={2.5} />
-              首堂免費試聽
+              第一堂課免費
+              {tutor.freeLessonMinutes ? ` ${tutor.freeLessonMinutes} 分` : ''}
             </span>
           )}
           <div className="flex flex-wrap gap-1">
@@ -75,6 +85,12 @@ export const TutorCard: React.FC<TutorCardProps> = ({
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-200 bg-black/45 backdrop-blur-md border border-emerald-400/35 px-2 py-0.5 rounded-full">
                 <GraduationCap className="w-3 h-3" />
                 學歷認證
+              </span>
+            )}
+            {showVerified && !trust.identityVerified && !trust.diplomaVerified && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-200 bg-black/45 backdrop-blur-md border border-emerald-400/35 px-2 py-0.5 rounded-full">
+                <ShieldCheck className="w-3 h-3" />
+                已驗證
               </span>
             )}
           </div>
@@ -111,11 +127,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({
                 key={tag}
                 className="inline-flex items-center gap-1 text-[10px] font-semibold text-white/90 bg-white/15 backdrop-blur-sm border border-white/20 px-2 py-0.5 rounded-full"
               >
-                {tag.includes('線上') ? (
-                  <Monitor className="w-2.5 h-2.5" />
-                ) : (
-                  <MapPin className="w-2.5 h-2.5" />
-                )}
+                <ModeIcon tag={tag} />
                 {tag}
               </span>
             ))}
@@ -137,7 +149,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({
                   {ratingDisplay}
                   <span className="text-white/45 font-normal">
                     {' '}
-                    ({tutor.reviews.reviewCount} 則評價)
+                    ({tutor.reviews.reviewCount})
                   </span>
                 </span>
               ) : (
@@ -156,7 +168,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({
             {responseLabel}
           </p>
 
-          <p className="text-sm text-white/55 leading-snug line-clamp-2 min-h-[2.5rem] group-hover/title:text-white/75 transition">
+          <p className="text-sm text-white/70 leading-snug line-clamp-2 min-h-[2.5rem] group-hover/title:text-white transition font-medium">
             {tutor.headline}
           </p>
         </Link>
@@ -169,7 +181,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({
           {tutor.firstLessonFree && (
             <span className="inline-flex items-center gap-1 text-sm font-bold text-brand-500">
               <Gift className="w-3.5 h-3.5" />
-              首堂免費試聽
+              第一堂課免費
             </span>
           )}
         </div>
@@ -212,20 +224,31 @@ export const TutorCard: React.FC<TutorCardProps> = ({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => onContact(tutor)}
-            className="w-full inline-flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white text-sm font-bold py-2.5 rounded-full transition cursor-pointer shadow-md shadow-brand-500/25"
-            aria-label={`聯絡 ${tutor.name}`}
-          >
-            <MessageCircle className="w-4 h-4" />
-            聯絡老師
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onContact(tutor)}
+              className="inline-flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white text-xs sm:text-sm font-bold py-2.5 rounded-full transition cursor-pointer shadow-md shadow-brand-500/25"
+              aria-label={`聯繫導師 ${tutor.name}`}
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              聯繫導師
+            </button>
+            <button
+              type="button"
+              onClick={() => onContact(tutor)}
+              className="inline-flex items-center justify-center gap-1.5 bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs sm:text-sm font-bold py-2.5 rounded-full transition cursor-pointer"
+              aria-label={`預約 ${tutor.name} 的課程`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              預約課程
+            </button>
+          </div>
         )}
 
         {!isUnlocked && (
           <p className="text-center text-[10px] text-white/40 -mt-1">
-            登入並開通 Student Pass 即可查看 LINE／電話
+            需 Student Pass 才能查看 LINE／電話
           </p>
         )}
 

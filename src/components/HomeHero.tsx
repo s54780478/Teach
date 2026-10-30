@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BookOpen,
@@ -14,6 +14,7 @@ import {
   Dumbbell,
   ChevronRight,
   Search,
+  Monitor,
 } from 'lucide-react';
 import { TW_CITIES } from '@/data/filterOptions';
 import { buildLessonsPath } from '@/lib/seoRoutes';
@@ -31,13 +32,14 @@ const HERO_CATEGORIES = [
   { label: '雅思', icon: Languages, query: '雅思' },
 ] as const;
 
+const ONLINE_LOCATION = '線上';
+
 interface HomeHeroProps {
   searchSubject: string;
   setSearchSubject: (val: string) => void;
   searchLocation: string;
   setSearchLocation: (val: string) => void;
   onSearch?: () => void;
-  /** 有老師資料的科目關鍵字；未傳入時顯示全部 */
   availableSubjectQueries?: Set<string> | null;
   children?: React.ReactNode;
 }
@@ -52,6 +54,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
   children,
 }) => {
   const router = useRouter();
+  const [locationFocused, setLocationFocused] = useState(false);
 
   const visibleCategories = useMemo(() => {
     if (!availableSubjectQueries) return [...HERO_CATEGORIES];
@@ -68,6 +71,8 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
     e.preventDefault();
     goToLessons(searchSubject, searchLocation);
   };
+
+  const isOnline = searchLocation.trim() === ONLINE_LOCATION;
 
   return (
     <section className="relative overflow-hidden bg-[#0c0c0e] text-white">
@@ -90,57 +95,112 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
             <span className="sm:ml-2">私人老師</span>
           </h1>
           <p
-            className="mt-3 text-sm sm:text-base text-white/50 animate-fade-rise"
+            className="mt-3 text-sm sm:text-base text-white/50 animate-fade-rise max-w-xl mx-auto leading-relaxed"
             style={{ animationDelay: '60ms' }}
           >
-            全台驗證師資 · 首堂免費試聽 · Student Pass 聯繫
+            全台驗證師資 · 許多導師提供首堂免費體驗 · Student Pass 聯繫
           </p>
 
+          {/* Superprof 雙欄搜尋：想學什麼？ + 在哪裡？ */}
           <form
             onSubmit={handleSubmit}
             className="mt-8 sm:mt-10 mx-auto max-w-2xl animate-fade-rise"
             style={{ animationDelay: '120ms' }}
           >
-            <div className="search-pill-focus flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-0 rounded-[1.85rem] sm:rounded-full border-2 border-brand-500/80 bg-[#121216]/95 backdrop-blur-xl p-2 sm:p-1.5 shadow-[0_0_0_1px_rgba(255,90,95,0.12),0_12px_48px_rgba(255,90,95,0.16)] transition duration-300 hover:border-brand-500 hover:shadow-[0_0_0_1px_rgba(255,90,95,0.2),0_16px_56px_rgba(255,90,95,0.22)]">
-              <label className="flex items-center gap-2.5 flex-1 min-w-0 px-3.5 sm:px-5 py-3 sm:py-2.5 rounded-2xl sm:rounded-full hover:bg-white/[0.03] transition">
-                <BookOpen className="w-4 h-4 text-brand-500 flex-shrink-0" aria-hidden />
-                <input
-                  type="text"
-                  value={searchSubject}
-                  onChange={(e) => setSearchSubject(e.target.value)}
-                  placeholder='試看看「數學」、「烏克麗麗」'
-                  aria-label="你想學什麼"
-                  className="w-full bg-transparent text-sm sm:text-[15px] font-medium text-white placeholder:text-white/35 focus:outline-none"
-                />
+            <div className="search-pill-focus flex flex-col sm:flex-row sm:items-stretch gap-0 rounded-2xl sm:rounded-full border-2 border-brand-500/80 bg-[#121216]/95 backdrop-blur-xl overflow-hidden shadow-[0_0_0_1px_rgba(255,90,95,0.12),0_12px_48px_rgba(255,90,95,0.16)] transition duration-300 hover:border-brand-500">
+              <label className="flex flex-col items-stretch gap-0.5 flex-1 min-w-0 px-4 sm:px-5 py-3 sm:py-2.5 text-left hover:bg-white/[0.03] transition">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-white/40">
+                  想學什麼？
+                </span>
+                <span className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-brand-500 flex-shrink-0" aria-hidden />
+                  <input
+                    type="text"
+                    value={searchSubject}
+                    onChange={(e) => setSearchSubject(e.target.value)}
+                    placeholder="數學、鋼琴、英文…"
+                    aria-label="想學什麼？"
+                    className="w-full bg-transparent text-sm sm:text-[15px] font-medium text-white placeholder:text-white/35 focus:outline-none"
+                  />
+                </span>
               </label>
 
-              <div className="hidden sm:block w-px h-9 bg-white/15" aria-hidden />
+              <div className="hidden sm:block w-px self-stretch my-2 bg-white/15" aria-hidden />
+              <div className="sm:hidden h-px w-full bg-white/10" aria-hidden />
 
-              <label className="flex items-center gap-2.5 flex-1 min-w-0 px-3.5 sm:px-5 py-3 sm:py-2.5 border-t border-white/10 sm:border-0 rounded-2xl sm:rounded-full hover:bg-white/[0.03] transition">
-                <MapPin className="w-4 h-4 text-brand-500 flex-shrink-0" aria-hidden />
-                <input
-                  type="text"
-                  list="hero-tw-cities"
-                  value={searchLocation}
-                  onChange={(e) => setSearchLocation(e.target.value)}
-                  placeholder="授課地區：台北、中壢…"
-                  aria-label="授課地區"
-                  className="w-full bg-transparent text-sm sm:text-[15px] font-medium text-white placeholder:text-white/35 focus:outline-none"
-                />
-                <datalist id="hero-tw-cities">
+              <div className="relative flex flex-col flex-1 min-w-0 px-4 sm:px-5 py-3 sm:py-2.5 text-left hover:bg-white/[0.03] transition">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-white/40">
+                  在哪裡？
+                </span>
+                <label className="flex items-center gap-2">
+                  {isOnline ? (
+                    <Monitor className="w-4 h-4 text-brand-500 flex-shrink-0" aria-hidden />
+                  ) : (
+                    <MapPin className="w-4 h-4 text-brand-500 flex-shrink-0" aria-hidden />
+                  )}
+                  <input
+                    type="text"
+                    list="hero-location-options"
+                    value={searchLocation}
+                    onChange={(e) => setSearchLocation(e.target.value)}
+                    onFocus={() => setLocationFocused(true)}
+                    onBlur={() => window.setTimeout(() => setLocationFocused(false), 150)}
+                    placeholder="輸入地區，或選擇線上"
+                    aria-label="在哪裡？"
+                    className="w-full bg-transparent text-sm sm:text-[15px] font-medium text-white placeholder:text-white/35 focus:outline-none"
+                  />
+                </label>
+                <datalist id="hero-location-options">
+                  <option value={ONLINE_LOCATION} />
                   {TW_CITIES.map((city) => (
                     <option key={city} value={city} />
                   ))}
                 </datalist>
-              </label>
 
-              <button
-                type="submit"
-                className="w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 active:scale-[0.97] text-white text-sm font-bold px-7 py-3.5 sm:py-3 rounded-full transition duration-200 cursor-pointer shadow-md shadow-brand-500/30"
-              >
-                <Search className="w-4 h-4 sm:hidden" />
-                探索一下
-              </button>
+                {locationFocused && (
+                  <div className="absolute left-3 right-3 top-full mt-1 z-20 rounded-xl border border-white/15 bg-[#1a1a1e] shadow-xl overflow-hidden text-left">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setSearchLocation(ONLINE_LOCATION)}
+                      className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm cursor-pointer transition ${
+                        isOnline
+                          ? 'bg-brand-500/15 text-brand-500'
+                          : 'text-white/80 hover:bg-white/5'
+                      }`}
+                    >
+                      <Monitor className="w-4 h-4" />
+                      線上授課
+                    </button>
+                    {['台北市', '新北市', '台中市', '高雄市'].map((city) => (
+                      <button
+                        key={city}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setSearchLocation(city)}
+                        className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm cursor-pointer transition ${
+                          searchLocation === city
+                            ? 'bg-brand-500/15 text-brand-500'
+                            : 'text-white/80 hover:bg-white/5'
+                        }`}
+                      >
+                        <MapPin className="w-4 h-4" />
+                        {city}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-2 sm:p-1.5 sm:pl-0">
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto h-full min-h-[44px] flex-shrink-0 inline-flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 active:scale-[0.97] text-white text-sm font-bold px-7 rounded-xl sm:rounded-full transition duration-200 cursor-pointer shadow-md shadow-brand-500/30"
+                >
+                  <Search className="w-4 h-4" />
+                  <span className="sm:inline">搜尋</span>
+                </button>
+              </div>
             </div>
           </form>
 

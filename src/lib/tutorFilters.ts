@@ -1,4 +1,9 @@
 import type { TeachingMode, Tutor } from '@/types/tutor';
+import {
+  teachingModeLabels,
+  teachingModeShortFromModes,
+  modesFromLegacyMode,
+} from '@/lib/teachingModes';
 
 /** 科目／關鍵字是否命中導師公開欄位 */
 export function tutorMatchesKeyword(tutor: Tutor, keyword: string): boolean {
@@ -27,17 +32,27 @@ export function formatResponseLabel(minutes: number): string {
   return `平均約 ${hours} 小時回覆`;
 }
 
-/** 授課方式標籤（卡片／履歷共用） */
-export function teachingModeTags(mode: TeachingMode): string[] {
-  if (mode === 'online') return ['線上授課'];
-  if (mode === 'in-person') return ['到府授課', '老師指定地點'];
-  return ['線上授課', '到府授課'];
+/** 授課方式標籤（優先 teachingModes） */
+export function teachingModeTags(
+  mode: TeachingMode,
+  teachingModes?: Tutor['teachingModes']
+): string[] {
+  const modes =
+    teachingModes && teachingModes.length > 0
+      ? teachingModes
+      : modesFromLegacyMode(mode);
+  return teachingModeLabels(modes);
 }
 
-export function teachingModeShortLabel(mode: TeachingMode): string {
-  if (mode === 'online') return '線上授課';
-  if (mode === 'in-person') return '到府授課';
-  return '線上／到府';
+export function teachingModeShortLabel(
+  mode: TeachingMode,
+  teachingModes?: Tutor['teachingModes']
+): string {
+  const modes =
+    teachingModes && teachingModes.length > 0
+      ? teachingModes
+      : modesFromLegacyMode(mode);
+  return teachingModeShortFromModes(modes);
 }
 
 /** 目錄中有命中老師的科目關鍵字（用於隱藏空分類） */

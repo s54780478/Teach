@@ -8,8 +8,14 @@ import {
   getTutorProfileByUserId,
   upsertTutorProfile,
 } from '@/lib/tutorService';
-import type { TeachingMode } from '@/types/tutor';
+import type { FreeLessonMinutes, TeachingModeOption } from '@/types/tutor';
 import { AuthModal } from '@/components/AuthModal';
+import {
+  TEACHING_MODE_OPTIONS,
+  FREE_LESSON_MINUTES,
+  DEFAULT_RESPONSE_TIME,
+  modesFromLegacyMode,
+} from '@/lib/teachingModes';
 import {
   ArrowLeft,
   ArrowRight,
@@ -40,11 +46,6 @@ const SUBJECT_CATEGORIES = [
   '其他',
 ];
 
-const TEACHING_MODES: { value: TeachingMode; label: string; hint: string }[] = [
-  { value: 'in-person', label: '實體到府', hint: '家裡／咖啡廳面授' },
-  { value: 'online', label: '線上遠距', hint: '視訊高清上課' },
-  { value: 'hybrid', label: '實體 + 線上', hint: '兩種皆可' },
-];
 
 /** 台灣升學／在地常用科目標籤 */
 const TW_SUBJECT_TAGS = [
@@ -73,9 +74,10 @@ interface FormState {
   specialtyTags: string[];
   city: string;
   district: string;
-  mode: TeachingMode;
+  teachingModes: TeachingModeOption[];
   hourlyRate: string;
   firstLessonFree: boolean;
+  freeLessonMinutes: FreeLessonMinutes;
   bio: string;
   degree: string;
   lineId: string;
@@ -89,9 +91,10 @@ const INITIAL_FORM: FormState = {
   specialtyTags: [],
   city: '',
   district: '',
-  mode: 'hybrid',
+  teachingModes: ['online', 'in_person', 'student_home'],
   hourlyRate: '',
   firstLessonFree: true,
+  freeLessonMinutes: 60,
   bio: '',
   degree: '',
   lineId: '',
@@ -135,14 +138,18 @@ export default function TutorApplyPage() {
       setIsEditMode(true);
       setForm({
         name: existing.name,
-        headline: existing.headline,
+        headline: existing.headline.slice(0, 50),
         subjectCategory: existing.subjectCategory || '數理升學',
         specialtyTags: existing.specialtyTags || [],
         city: existing.location.city,
         district: existing.location.district,
-        mode: existing.mode,
+        teachingModes:
+          existing.teachingModes?.length > 0
+            ? existing.teachingModes
+            : modesFromLegacyMode(existing.mode),
         hourlyRate: String(existing.hourlyRate || ''),
         firstLessonFree: existing.firstLessonFree,
+        freeLessonMinutes: existing.freeLessonMinutes || 60,
         bio: existing.bio,
         degree: existing.verification.degree || '',
         lineId: existing.contact.lineId === '未提供' ? '' : existing.contact.lineId,
@@ -196,13 +203,18 @@ export default function TutorApplyPage() {
 
     if (currentStep === 2) {
       if (!form.city.trim()) errors.city = '請填寫服務縣市（例：桃園市）';
+      if (form.teachingModes.length === 0) {
+        errors.teachingModes = '請至少選擇一種授課方式';
+      }
+      if (!form.headline.trim()) {
+        errors.headline = '請填寫個人頭銜（一句話介紹）';
+      } else if (form.headline.trim().length > 50) {
+        errors.headline = '頭銜請控制在 50 字以內';
+      }
       if (!form.hourlyRate.trim()) {
         errors.hourlyRate = '請填寫時薪';
       } else if (Number.isNaN(Number(form.hourlyRate)) || Number(form.hourlyRate) < 100) {
         errors.hourlyRate = '時薪需為數字且至少 100 元';
-      }
-      if (!form.headline.trim() && !form.bio.trim()) {
-        // auto-generate headline later; bio optional but encourage
       }
     }
 
@@ -235,9 +247,22 @@ export default function TutorApplyPage() {
 
   const buildBio = (): string => {
     if (form.bio.trim()) return form.bio.trim();
-    const modeLabel =
-      TEACHING_MODES.find((m) => m.value === form.mode)?.label || '彈性授課';
-    return `專長：${form.specialtyTags.join('、') || form.subjectCategory}。授課方式：${modeLabel}。歡迎家長解鎖後聯繫排課。`;
+    const modeLabel = form.teachingModes
+      .map((id) => TEACHING_MODE_OPTIONS.find((o) => o.id === id)?.label)
+      .filter(Boolean)
+      .join('、');
+    return `專長：${form.specialtyTags.join('、') || form.subjectCategory}。授課方式：${modeLabel || '彈性授課'}。歡迎家長解鎖後聯繫排課。`;
+  };
+
+  const toggleTeachingMode = (id: TeachingModeOption) => {
+    setForm((prev) => {
+      const has = prev.teachingModes.includes(id);
+      const next = has
+        ? prev.teachingModes.filter((m) => m !== id)
+        : [...prev.teachingModes, id];
+      return { ...prev, teachingModes: next };
+    });
+    setFieldErrors((prev) => ({ ...prev, teachingModes: undefined }));
   };
 
   const handleSubmit = async () => {
@@ -249,16 +274,18 @@ export default function TutorApplyPage() {
 
     const result = await upsertTutorProfile(user.id, {
       name: form.name.trim(),
-      headline: buildHeadline(),
+      headline: buildHeadline().slice(0, 50),
       bio: buildBio(),
       degree: form.degree.trim(),
       specialtyTags: form.specialtyTags,
       subjectCategory: form.subjectCategory,
       city: form.city.trim(),
       district: form.district.trim(),
-      mode: form.mode,
+      teachingModes: form.teachingModes,
       hourlyRate: Number(form.hourlyRate),
       firstLessonFree: form.firstLessonFree,
+      freeLessonMinutes: form.freeLessonMinutes,
+      responseTime: DEFAULT_RESPONSE_TIME,
       lineId: form.lineId.trim(),
       phone: form.phone.trim(),
       email: user.email || undefined,
@@ -578,25 +605,43 @@ export default function TutorApplyPage() {
 
               <div>
                 <p className="block text-xs font-medium text-slate-700 mb-2">
-                  授課方式 <span className="text-brand-500">*</span>
+                  授課方式（可多選） <span className="text-brand-500">*</span>
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {TEACHING_MODES.map((m) => (
-                    <button
-                      key={m.value}
-                      type="button"
-                      onClick={() => setField('mode', m.value)}
-                      className={`text-left p-3 rounded-xl border transition cursor-pointer ${
-                        form.mode === m.value
-                          ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
-                      }`}
-                    >
-                      <span className="block text-sm font-semibold text-slate-900">{m.label}</span>
-                      <span className="block text-[11px] text-slate-400 mt-0.5">{m.hint}</span>
-                    </button>
-                  ))}
+                  {TEACHING_MODE_OPTIONS.map((m) => {
+                    const checked = form.teachingModes.includes(m.id);
+                    return (
+                      <label
+                        key={m.id}
+                        className={`text-left p-3 rounded-xl border transition cursor-pointer ${
+                          checked
+                            ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500'
+                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        }`}
+                      >
+                        <span className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleTeachingMode(m.id)}
+                            className="mt-0.5 w-4 h-4 accent-brand-500"
+                          />
+                          <span>
+                            <span className="block text-sm font-semibold text-slate-900">
+                              {m.label}
+                            </span>
+                            <span className="block text-[11px] text-slate-400 mt-0.5">
+                              {m.hint}
+                            </span>
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
+                {fieldErrors.teachingModes && (
+                  <p className="text-xs text-rose-500 mt-1">{fieldErrors.teachingModes}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -655,31 +700,61 @@ export default function TutorApplyPage() {
                 )}
               </div>
 
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={form.firstLessonFree}
-                  onChange={(e) => setField('firstLessonFree', e.target.checked)}
-                  className="w-4 h-4 accent-brand-500"
-                />
-                <span className="text-sm text-slate-700">
-                  提供<strong className="font-semibold">首堂免費試聽</strong>
-                  <span className="text-xs text-slate-400 ml-1">（建議開啟，提升媒合率）</span>
-                </span>
-              </label>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-3">
+                <label className="flex items-center justify-between gap-3 cursor-pointer select-none">
+                  <span className="text-sm text-slate-800">
+                    <strong className="font-semibold">第一堂課免費</strong>
+                    <span className="block text-[11px] text-slate-400 mt-0.5">
+                      預設開啟 · 可提供 30／45／60 分鐘免費體驗
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={form.firstLessonFree}
+                    onChange={(e) => setField('firstLessonFree', e.target.checked)}
+                    className="w-5 h-5 accent-brand-500"
+                    aria-label="第一堂課免費"
+                  />
+                </label>
+                {form.firstLessonFree && (
+                  <div className="flex flex-wrap gap-2">
+                    {FREE_LESSON_MINUTES.map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setField('freeLessonMinutes', mins)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer transition ${
+                          form.freeLessonMinutes === mins
+                            ? 'bg-brand-500 text-white border-brand-500'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {mins} 分鐘
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div>
                 <label htmlFor="headline" className="block text-xs font-medium text-slate-700 mb-1.5">
-                  一句話標題（選填）
+                  個人頭銜 (Headline) <span className="text-brand-500">*</span>
+                  <span className="text-slate-400 font-normal ml-1">
+                    {form.headline.length}/50
+                  </span>
                 </label>
                 <input
                   id="headline"
                   type="text"
+                  maxLength={50}
                   value={form.headline}
-                  onChange={(e) => setField('headline', e.target.value)}
-                  placeholder="空白則自動依科目與地區產生"
-                  className={inputClass()}
+                  onChange={(e) => setField('headline', e.target.value.slice(0, 50))}
+                  placeholder="例：10 年國立大學物理系講師"
+                  className={inputClass(fieldErrors.headline)}
                 />
+                {fieldErrors.headline && (
+                  <p className="text-xs text-rose-500 mt-1">{fieldErrors.headline}</p>
+                )}
               </div>
 
               <div>

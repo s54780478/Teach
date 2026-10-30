@@ -1,44 +1,61 @@
+/** 舊版相容：單一 mode（由 teachingModes 推導） */
 export type TeachingMode = 'in-person' | 'online' | 'hybrid';
+
+/** Superprof 多選授課方式 */
+export type TeachingModeOption = 'online' | 'in_person' | 'student_home';
+
+export type FreeLessonMinutes = 30 | 45 | 60;
 
 export interface VerificationInfo {
   isIdentityVerified: boolean;
   isDiplomaVerified: boolean;
-  degree: string; // e.g. "國立臺灣大學 物理學研究所"
+  degree: string;
 }
 
 export interface ReviewStats {
-  rating: number; // e.g. 5.0
-  reviewCount: number; // e.g. 38
+  rating: number;
+  reviewCount: number;
 }
 
 export interface TutorContactDetails {
-  phone: string;     // e.g. "0912-345-678"
-  lineId: string;    // e.g. "lin_physics_ntu"
-  email: string;     // e.g. "chenghan.lin@idaltu.tw"
+  phone: string;
+  lineId: string;
+  email: string;
 }
 
 export interface Tutor {
   id: string;
   name: string;
-  headline: string; // Superprof style punchy headline
+  /** 一句話頭銜（≤50 字） */
+  headline: string;
   bio: string;
   avatarUrl: string;
   verification: VerificationInfo;
-  specialtyTags: string[]; // e.g. ["國中數學", "台大物理系", "會考衝刺"]
-  subjectCategory: string; // e.g. "數理升學", "外語學習", "程式設計"
+  /** 綜合驗證標章（身分或學歷任一通過） */
+  isVerified: boolean;
+  specialtyTags: string[];
+  subjectCategory: string;
   location: {
-    city: string; // e.g. "台北市"
-    district: string; // e.g. "大安區"
-    displayLocation: string; // e.g. "台北市大安區"
+    city: string;
+    district: string;
+    displayLocation: string;
   };
+  /** @deprecated 請優先使用 teachingModes；仍由 modes 推導以相容篩選 */
   mode: TeachingMode;
-  hourlyRate: number; // NT$ per hour
-  firstLessonFree: boolean; // Superprof signature feature: first lesson free
-  responseSpeedMinutes: number; // e.g. 15 (平均 15 分鐘內回覆)
-  taughtHours?: number; // e.g. 180 (已授課 180 小時，Superprof 關鍵數據)
+  /** Superprof：線上／面授／可到府 */
+  teachingModes: TeachingModeOption[];
+  hourlyRate: number;
+  /** free_first_lesson */
+  firstLessonFree: boolean;
+  /** 免費體驗時長（分鐘） */
+  freeLessonMinutes: FreeLessonMinutes;
+  /** 顯示用回覆文案，例：通常在 1 小時內回覆 */
+  responseTime: string;
+  responseSpeedMinutes: number;
+  taughtHours?: number;
   reviews: ReviewStats;
   badge?: '熱門首選' | '金牌導師' | '新星特選';
-  contact: TutorContactDetails; // 靜態聯絡方式 (供買方解鎖後展示)
+  contact: TutorContactDetails;
 }
 
 export interface SearchFilterState {

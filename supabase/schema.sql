@@ -15,10 +15,16 @@ create table if not exists public.tutors (
   city text,
   district text,
   display_location text,
-  mode text default 'hybrid', -- 'in-person', 'online', 'hybrid'
+  mode text default 'hybrid', -- 'in-person', 'online', 'hybrid'（由 teaching_modes 推導）
+  teaching_modes text[] default array['online','in_person','student_home']::text[],
   hourly_rate integer not null default 800,
-  first_lesson_free boolean default true,
-  response_speed_minutes integer default 15,
+  first_lesson_free boolean default true, -- Superprof free_first_lesson
+  free_lesson_minutes integer default 60,
+  response_time text default '通常在 1 小時內回覆',
+  response_speed_minutes integer default 60,
+  is_verified boolean default false,
+  is_identity_verified boolean default false,
+  is_diploma_verified boolean default false,
   taught_hours integer default 100,
   rating numeric(3, 1) default 5.0,
   review_count integer default 0,

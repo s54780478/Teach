@@ -13,7 +13,9 @@ export interface TutorTrustFlags {
 }
 
 export function getTutorTrustFlags(tutor: Tutor): TutorTrustFlags {
-  const identityVerified = Boolean(tutor.verification.isIdentityVerified);
+  const identityVerified = Boolean(
+    tutor.verification.isIdentityVerified || tutor.isVerified
+  );
   const diplomaVerified = Boolean(tutor.verification.isDiplomaVerified);
   const fastResponse =
     tutor.responseSpeedMinutes > 0 && tutor.responseSpeedMinutes <= 15;

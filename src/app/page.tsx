@@ -12,7 +12,6 @@ import { ContactViewModal } from '@/components/ContactViewModal';
 import { UnlockedTutorsDrawer } from '@/components/UnlockedTutorsDrawer';
 import { searchTutors } from '@/lib/tutorService';
 import {
-  AdvancedFilterPanel,
   DEFAULT_ADVANCED_FILTERS,
   type AdvancedFilterValues,
 } from '@/components/AdvancedFilterPanel';
@@ -43,21 +42,24 @@ const HERO_SUBJECT_QUERIES = [
   '雅思',
 ] as const;
 
+const ONLINE_LOCATION = '線上';
+
+function isOnlineLocation(location: string): boolean {
+  const q = location.trim().toLowerCase();
+  return q === ONLINE_LOCATION || q === 'online' || q === '線上授課';
+}
+
 export default function HomePage() {
-  // Search and Filter States
   const [searchSubject, setSearchSubject] = useState('');
   const [searchLocation, setSearchLocation] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [onlyFreeLesson, setOnlyFreeLesson] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedFilterValues>(DEFAULT_ADVANCED_FILTERS);
 
-  // Supabase Data & Loading States
   const [tutors, setTutors] = useState<Tutor[]>([]);
-  /** 未篩選的上架目錄，用於隱藏空科目／分類 */
   const [catalogTutors, setCatalogTutors] = useState<Tutor[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFromSupabase, setIsFromSupabase] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const {
     currentUser,
@@ -70,40 +72,32 @@ export default function HomePage() {
     signOut,
   } = useStudentPass();
 
-  // Modals / Drawer
   const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isPassModalOpen, setIsPassModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isContactedDrawerOpen, setIsContactedDrawerOpen] = useState(false);
 
-  // 2. 載入導師資料（時薪／授課方式／排序即時打 Supabase）
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    setErrorMessage(null);
+    const online = isOnlineLocation(searchLocation);
 
     try {
       const tutorResult = await searchTutors({
-        region: searchLocation,
+        region: online ? '' : searchLocation,
         subject: searchSubject,
-        minRate: advanced.minRate === '' ? undefined : advanced.minRate,
-        maxRate: advanced.maxRate === '' ? undefined : advanced.maxRate,
-        mode: advanced.mode,
+        mode: online ? 'online' : advanced.mode,
         sortBy: advanced.sortBy,
         onlyPublished: true,
       });
       setTutors(tutorResult.tutors);
       setIsFromSupabase(tutorResult.isFromSupabase);
-
-      if (tutorResult.error && !tutorResult.isFromSupabase) {
-        setErrorMessage(tutorResult.error);
-      }
-    } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : '讀取資料失敗');
+    } catch {
+      setIsFromSupabase(false);
     } finally {
       setIsLoading(false);
     }
-  }, [searchLocation, searchSubject, advanced]);
+  }, [searchLocation, searchSubject, advanced.mode, advanced.sortBy]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -112,7 +106,6 @@ export default function HomePage() {
     return () => window.clearTimeout(timer);
   }, [loadData]);
 
-  // 載入完整上架目錄（科目／分類防空城）
   useEffect(() => {
     let cancelled = false;
     void searchTutors({ onlyPublished: true, sortBy: 'rating' }).then((result) => {
@@ -137,7 +130,6 @@ export default function HomePage() {
     return collectAvailableCategories(source);
   }, [catalogTutors, tutors]);
 
-  // 若目前分類已無老師，自動回到「全部」
   useEffect(() => {
     if (
       activeCategory !== 'all' &&
@@ -148,7 +140,7 @@ export default function HomePage() {
     }
   }, [activeCategory, availableCategories]);
 
-  // 點擊聯絡：未登入 → Auth；未訂閱 → Student Pass Modal；已訂閱 → 顯示聯絡方式
+  /** 聯繫／預約：未登入 → Auth；未訂閱 → Student Pass；已訂閱 → 聯絡方式 */
   const handleInitiateContact = (tutor: Tutor) => {
     setSelectedTutor(tutor);
     if (!currentUser) {
@@ -164,7 +156,9 @@ export default function HomePage() {
   };
 
   const handleAuthSuccess = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     const user = session?.user;
     if (!user) return;
     const latest = await hydrate(user.id);
@@ -202,7 +196,6 @@ export default function HomePage() {
     setIsContactModalOpen(false);
   };
 
-  // 7. 分類／首堂免費仍於前端補強（地區科目時薪模式已由 searchTutors 處理）
   const filteredTutors = useMemo(() => {
     return tutors.filter((tutor) => {
       if (activeCategory !== 'all' && tutor.subjectCategory !== activeCategory) return false;
@@ -219,19 +212,16 @@ export default function HomePage() {
     setAdvanced(DEFAULT_ADVANCED_FILTERS);
   };
 
-  const handleAdvancedChange = (next: AdvancedFilterValues) => {
-    setAdvanced(next);
-  };
-
-  const handleSortByFromCategory = (
-    sort: 'recommended' | 'price-asc' | 'price-desc' | 'rating'
-  ) => {
-    setAdvanced((prev) => ({ ...prev, sortBy: sort }));
-  };
+  const hasActiveFilters =
+    Boolean(searchSubject.trim()) ||
+    Boolean(searchLocation.trim()) ||
+    activeCategory !== 'all' ||
+    onlyFreeLesson ||
+    advanced.mode !== 'all' ||
+    advanced.sortBy !== 'recommended';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f7f7f8]">
-      {/* Superprof 暗色 Hero：導覽 + 大搜尋（探索後導向 /lessons SEO 路由） */}
       <HomeHero
         searchSubject={searchSubject}
         setSearchSubject={setSearchSubject}
@@ -251,81 +241,63 @@ export default function HomePage() {
         />
       </HomeHero>
 
-      {/* Superprof 暗色列表區：三欄直式課程卡 */}
       <div className="bg-[#0c0c0e] flex-1 border-t border-white/5">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-3">
           <p className="flex items-center gap-2 text-sm sm:text-base text-white font-medium">
-            <span className="font-bold">{Math.max(filteredTutors.length, 1).toLocaleString()}位</span>
+            <span className="font-bold">
+              {Math.max(filteredTutors.length, 1).toLocaleString()}位
+            </span>
             有評價的導師
             <span className="inline-flex text-brand-500 tracking-tight text-sm" aria-hidden>
               ★★★★★
             </span>
+          </p>
+          <p className="mt-1 text-xs text-white/40">
+            許多導師提供首堂免費體驗 · Student Pass 解鎖聯繫
           </p>
         </div>
 
         <CategoryFilter
           activeCategory={activeCategory}
           setActiveCategory={setActiveCategory}
-          searchLocation={searchLocation}
-          setSearchLocation={setSearchLocation}
           searchSubject={searchSubject}
           setSearchSubject={setSearchSubject}
           onlyFreeLesson={onlyFreeLesson}
           setOnlyFreeLesson={setOnlyFreeLesson}
-          setSortBy={handleSortByFromCategory}
+          mode={advanced.mode}
+          setMode={(mode) => setAdvanced((prev) => ({ ...prev, mode }))}
           sortBy={advanced.sortBy}
+          setSortBy={(sortBy) => setAdvanced((prev) => ({ ...prev, sortBy }))}
           availableSubjectQueries={availableSubjectQueries}
           availableCategories={availableCategories}
+          hasActiveFilters={hasActiveFilters}
+          onClearAll={resetFilters}
         />
 
         <main id="tutors" className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-6">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                {searchSubject
-                  ? `${searchSubject} 家教課程`
+          <div className="mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              {searchSubject
+                ? `${searchSubject} 家教課程`
+                : isOnlineLocation(searchLocation)
+                  ? '線上家教課程'
                   : searchLocation
                     ? `${searchLocation}熱門家教課程`
                     : '探索全台家教課程'}
-              </h2>
-              <p className="text-xs text-white/45 mt-1">
-                {isLoading
-                  ? '正在載入課程…'
-                  : `共 ${filteredTutors.length} 門課程 · 首堂免費試聽 · Student Pass 聯繫`}
-                {!isFromSupabase && !isLoading ? ' · 示範資料' : ''}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 self-start sm:self-auto">
-              <AdvancedFilterPanel
-                value={advanced}
-                onChange={handleAdvancedChange}
-                variant="dark"
-                layout="trigger-only"
-              />
-              {(searchSubject ||
-                searchLocation ||
-                advanced.mode !== 'all' ||
-                advanced.minRate !== '' ||
-                advanced.maxRate !== '' ||
-                activeCategory !== 'all' ||
-                onlyFreeLesson) && (
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="text-xs text-white/50 hover:text-white underline cursor-pointer"
-                >
-                  清除篩選
-                </button>
-              )}
-            </div>
+            </h2>
+            <p className="text-xs text-white/45 mt-1">
+              {isLoading
+                ? '正在載入課程…'
+                : `共 ${filteredTutors.length} 門課程 · 許多導師提供首堂免費體驗`}
+              {!isFromSupabase && !isLoading ? ' · 示範資料' : ''}
+            </p>
           </div>
 
           {!isFromSupabase && !isLoading && (
             <div className="mb-5 p-3 bg-amber-500/10 border border-amber-400/25 rounded-xl flex items-start justify-between gap-3 text-xs text-amber-100">
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span>目前為備用假資料。若已在 Supabase 執行 schema，可重新整理連線。</span>
+                <span>目前為備用假資料。請確認 `.env.local` 已填入 Supabase 金鑰。</span>
               </div>
               <button
                 type="button"
@@ -338,52 +310,45 @@ export default function HomePage() {
             </div>
           )}
 
-          <div className="flex flex-col lg:flex-row gap-8">
-            <AdvancedFilterPanel
-              value={advanced}
-              onChange={handleAdvancedChange}
-              variant="dark"
-              layout="sidebar-only"
-            />
-
-            <div className="flex-1 min-w-0">
-              {isLoading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-7">
-                  {[1, 2, 3, 4, 5, 6].map((skeletonId) => (
-                    <div key={skeletonId} className="animate-pulse">
-                      <div className="aspect-[3/4] rounded-3xl bg-white/10" />
-                      <div className="mt-3 h-4 w-2/3 rounded bg-white/10" />
-                      <div className="mt-2 h-3 w-full rounded bg-white/5" />
-                      <div className="mt-2 h-3 w-1/2 rounded bg-white/5" />
-                    </div>
-                  ))}
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-7">
+              {[1, 2, 3, 4, 5, 6].map((skeletonId) => (
+                <div key={skeletonId} className="animate-pulse">
+                  <div className="aspect-[3/4] rounded-3xl bg-white/10" />
+                  <div className="mt-3 h-4 w-2/3 rounded bg-white/10" />
+                  <div className="mt-2 h-3 w-full rounded bg-white/5" />
+                  <div className="mt-2 h-3 w-1/2 rounded bg-white/5" />
                 </div>
-              ) : filteredTutors.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-7">
-                  {filteredTutors.map((tutor) => (
-                    <TutorCard
-                      key={tutor.id}
-                      tutor={tutor}
-                      isUnlocked={studentPass.active}
-                      onContact={handleInitiateContact}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptySearchState
-                  regionLabel={searchLocation.trim() || undefined}
-                  subjectLabel={searchSubject.trim() || undefined}
-                  onReset={resetFilters}
-                  onWiden={() => {
-                    setAdvanced(DEFAULT_ADVANCED_FILTERS);
-                    setActiveCategory('all');
-                    setOnlyFreeLesson(false);
-                  }}
-                  className="my-8"
-                />
-              )}
+              ))}
             </div>
-          </div>
+          ) : filteredTutors.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-7">
+              {filteredTutors.map((tutor) => (
+                <TutorCard
+                  key={tutor.id}
+                  tutor={tutor}
+                  isUnlocked={studentPass.active}
+                  onContact={handleInitiateContact}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptySearchState
+              regionLabel={
+                isOnlineLocation(searchLocation)
+                  ? '線上'
+                  : searchLocation.trim() || undefined
+              }
+              subjectLabel={searchSubject.trim() || undefined}
+              onReset={resetFilters}
+              onWiden={() => {
+                setAdvanced(DEFAULT_ADVANCED_FILTERS);
+                setActiveCategory('all');
+                setOnlyFreeLesson(false);
+              }}
+              className="my-8"
+            />
+          )}
         </main>
       </div>
 
@@ -421,7 +386,7 @@ export default function HomePage() {
         onSuccess={handleAuthSuccess}
         intentHint={
           selectedTutor
-            ? `登入後即可開通 Student Pass，聯繫「${selectedTutor.name}」並查看 LINE／電話。`
+            ? `登入後開通 Student Pass，即可聯繫「${selectedTutor.name}」（解鎖全平台、可隨時取消）。`
             : null
         }
       />

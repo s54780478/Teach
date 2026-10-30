@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronRight, Loader2, Monitor, MapPin } from 'lucide-react';
 import type { Tutor } from '@/types/tutor';
 import { searchTutors } from '@/lib/tutorService';
 import {
@@ -19,7 +19,6 @@ import { StudentPassModal } from '@/components/StudentPassModal';
 import { ContactViewModal } from '@/components/ContactViewModal';
 import { UnlockedTutorsDrawer } from '@/components/UnlockedTutorsDrawer';
 import {
-  AdvancedFilterPanel,
   DEFAULT_ADVANCED_FILTERS,
   type AdvancedFilterValues,
 } from '@/components/AdvancedFilterPanel';
@@ -68,17 +67,19 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
     document.title = `${pageTitle} ｜ idaltu`;
   }, [pageTitle]);
 
+  const onlineRegion =
+    regionQuery.trim() === '線上' ||
+    regionQuery.trim().toLowerCase() === 'online';
+
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
 
     const timer = window.setTimeout(() => {
       void searchTutors({
-        region: regionQuery,
+        region: onlineRegion ? '' : regionQuery,
         subject: subjectQuery,
-        minRate: advanced.minRate === '' ? undefined : advanced.minRate,
-        maxRate: advanced.maxRate === '' ? undefined : advanced.maxRate,
-        mode: advanced.mode,
+        mode: onlineRegion ? 'online' : advanced.mode,
         sortBy: advanced.sortBy,
         onlyPublished: true,
       }).then((result) => {
@@ -93,7 +94,15 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [regionSlug, subjectSlug, regionQuery, subjectQuery, advanced]);
+  }, [
+    regionSlug,
+    subjectSlug,
+    regionQuery,
+    subjectQuery,
+    onlineRegion,
+    advanced.mode,
+    advanced.sortBy,
+  ]);
 
   const handleInitiateContact = (tutor: Tutor) => {
     setSelectedTutor(tutor);
@@ -148,60 +157,99 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
           )}
         </nav>
 
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              {pageTitle}
-            </h1>
-            <p className="mt-2 text-sm text-white/50">
-              {isLoading
-                ? '正在從 Supabase 載入課程…'
-                : `共 ${tutors.length} 門相關課程 · ${
-                    isFromSupabase ? 'Supabase 即時資料' : '示範資料（降級）'
-                  }`}
-            </p>
-          </div>
-          <AdvancedFilterPanel
-            value={advanced}
-            onChange={setAdvanced}
-            variant="dark"
-            layout="trigger-only"
-          />
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+            {pageTitle}
+          </h1>
+          <p className="mt-2 text-sm text-white/50">
+            {isLoading
+              ? '正在載入課程…'
+              : `共 ${tutors.length} 門相關課程 · 許多導師提供首堂免費體驗`}
+            {!isFromSupabase && !isLoading ? ' · 示範資料' : ''}
+          </p>
         </div>
 
-        <div className="mt-8 flex flex-col lg:flex-row gap-8">
-          <AdvancedFilterPanel
-            value={advanced}
-            onChange={setAdvanced}
-            variant="dark"
-            layout="sidebar-only"
-          />
+        {/* Superprof 頂部單一篩選列（無側邊欄） */}
+        <div
+          className="mt-6 flex flex-wrap items-center gap-2"
+          role="region"
+          aria-label="課程篩選"
+        >
+          {(
+            [
+              { id: 'all' as const, label: '全部' },
+              { id: 'online' as const, label: '線上' },
+              { id: 'in-person' as const, label: '面授' },
+            ] as const
+          ).map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              onClick={() => setAdvanced((prev) => ({ ...prev, mode: chip.id }))}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs transition cursor-pointer border ${
+                advanced.mode === chip.id
+                  ? 'bg-white text-slate-900 font-semibold border-white'
+                  : 'bg-transparent text-white/65 border-white/15 hover:border-white/30'
+              }`}
+            >
+              {chip.id === 'online' && <Monitor className="w-3 h-3" />}
+              {chip.id === 'in-person' && <MapPin className="w-3 h-3" />}
+              {chip.label}
+            </button>
+          ))}
+          <label className="ml-auto inline-flex items-center gap-2 text-[11px] text-white/40">
+            排序
+            <select
+              value={advanced.sortBy}
+              onChange={(e) =>
+                setAdvanced((prev) => ({
+                  ...prev,
+                  sortBy: e.target.value as AdvancedFilterValues['sortBy'],
+                }))
+              }
+              aria-label="排序方式"
+              className="bg-white/5 border border-white/15 rounded-full px-3 py-1.5 text-xs text-white/85 font-medium focus:outline-none cursor-pointer"
+            >
+              <option value="recommended" className="text-slate-900">
+                推薦
+              </option>
+              <option value="rating" className="text-slate-900">
+                評價最高
+              </option>
+              <option value="price-asc" className="text-slate-900">
+                時薪：低到高
+              </option>
+              <option value="price-desc" className="text-slate-900">
+                時薪：高到低
+              </option>
+            </select>
+          </label>
+        </div>
 
-          <div className="flex-1 min-w-0">
-            {isLoading ? (
-              <div className="flex justify-center py-20">
-                <Loader2 className="w-7 h-7 animate-spin text-brand-500" />
-              </div>
-            ) : tutors.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-7">
-                {tutors.map((tutor) => (
-                  <TutorCard
-                    key={tutor.id}
-                    tutor={tutor}
-                    isUnlocked={studentPass.active}
-                    onContact={handleInitiateContact}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptySearchState
-                regionLabel={regionQuery ? regionLabel : undefined}
-                subjectLabel={subjectQuery ? subjectLabel : undefined}
-                onReset={() => setAdvanced(DEFAULT_ADVANCED_FILTERS)}
-                onWiden={() => setAdvanced(DEFAULT_ADVANCED_FILTERS)}
-              />
-            )}
-          </div>
+        <div className="mt-8">
+          {isLoading ? (
+            <div className="flex justify-center py-20">
+              <Loader2 className="w-7 h-7 animate-spin text-brand-500" />
+            </div>
+          ) : tutors.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-7">
+              {tutors.map((tutor) => (
+                <TutorCard
+                  key={tutor.id}
+                  tutor={tutor}
+                  isUnlocked={studentPass.active}
+                  onContact={handleInitiateContact}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptySearchState
+              regionLabel={regionQuery ? regionLabel : undefined}
+              subjectLabel={subjectQuery ? subjectLabel : undefined}
+              onReset={() => setAdvanced(DEFAULT_ADVANCED_FILTERS)}
+              onWiden={() => setAdvanced(DEFAULT_ADVANCED_FILTERS)}
+            />
+          )}
         </div>
       </main>
 
