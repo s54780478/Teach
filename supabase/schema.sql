@@ -48,32 +48,44 @@ create policy "允許所有人公開讀取導師列表"
   on public.tutors for select 
   using (true);
 
--- MVP：允許寫入 tutors（避免 RLS 擋下履歷上架）
--- 日後上線可再收緊為 auth.uid()::text = id
+-- 寫入僅限本人（auth.uid 必須等於 tutors.id）
 drop policy if exists "允許已登入用戶新增自己的履歷" on public.tutors;
 drop policy if exists "允許已登入用戶更新自己的履歷" on public.tutors;
+drop policy if exists "允許已登入用戶刪除自己的履歷" on public.tutors;
 drop policy if exists "允許公開新增導師履歷" on public.tutors;
 drop policy if exists "允許公開更新導師履歷" on public.tutors;
 
-create policy "允許公開新增導師履歷"
+create policy "允許已登入用戶新增自己的履歷"
   on public.tutors for insert
-  with check (true);
+  to authenticated
+  with check (auth.uid()::text = id);
 
-create policy "允許公開更新導師履歷"
+create policy "允許已登入用戶更新自己的履歷"
   on public.tutors for update
-  using (true)
-  with check (true);
+  to authenticated
+  using (auth.uid()::text = id)
+  with check (auth.uid()::text = id);
 
--- 允許所有人讀取與新增解鎖紀錄
+create policy "允許已登入用戶刪除自己的履歷"
+  on public.tutors for delete
+  to authenticated
+  using (auth.uid()::text = id);
+
+-- unlocks：僅本人可讀寫
 drop policy if exists "允許所有人讀取解鎖紀錄" on public.unlocks;
-create policy "允許所有人讀取解鎖紀錄" 
-  on public.unlocks for select 
-  using (true);
-
 drop policy if exists "允許所有人新增解鎖紀錄" on public.unlocks;
-create policy "允許所有人新增解鎖紀錄" 
-  on public.unlocks for insert 
-  with check (true);
+drop policy if exists "允許已登入用戶讀取自己的解鎖" on public.unlocks;
+drop policy if exists "允許已登入用戶新增解鎖紀錄" on public.unlocks;
+
+create policy "允許已登入用戶讀取自己的解鎖"
+  on public.unlocks for select
+  to authenticated
+  using (auth.uid()::text = buyer_id);
+
+create policy "允許已登入用戶新增解鎖紀錄"
+  on public.unlocks for insert
+  to authenticated
+  with check (auth.uid()::text = buyer_id);
 
 -- 3b. 課程表（刊登課程用，詳見 courses.sql 亦可單獨執行）
 create table if not exists public.courses (
@@ -94,11 +106,23 @@ create table if not exists public.courses (
 
 alter table public.courses enable row level security;
 drop policy if exists "允許所有人公開讀取課程" on public.courses;
-create policy "允許所有人公開讀取課程" on public.courses for select using (true);
 drop policy if exists "允許公開新增課程" on public.courses;
-create policy "允許公開新增課程" on public.courses for insert with check (true);
 drop policy if exists "允許公開更新課程" on public.courses;
-create policy "允許公開更新課程" on public.courses for update using (true) with check (true);
+drop policy if exists "允許公開刪除課程" on public.courses;
+drop policy if exists "允許已登入用戶新增自己的課程" on public.courses;
+drop policy if exists "允許已登入用戶更新自己的課程" on public.courses;
+drop policy if exists "允許已登入用戶刪除自己的課程" on public.courses;
+
+create policy "允許所有人公開讀取課程" on public.courses for select using (true);
+create policy "允許已登入用戶新增自己的課程"
+  on public.courses for insert to authenticated
+  with check (auth.uid()::text = tutor_id);
+create policy "允許已登入用戶更新自己的課程"
+  on public.courses for update to authenticated
+  using (auth.uid()::text = tutor_id) with check (auth.uid()::text = tutor_id);
+create policy "允許已登入用戶刪除自己的課程"
+  on public.courses for delete to authenticated
+  using (auth.uid()::text = tutor_id);
 
 -- ========================================================
 -- 4. 寫入現有 8 位在地導師初始假資料 (Seed Data)

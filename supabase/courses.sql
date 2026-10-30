@@ -26,22 +26,29 @@ create index if not exists courses_region_city_idx on public.courses (region_cit
 alter table public.courses enable row level security;
 
 drop policy if exists "允許所有人公開讀取課程" on public.courses;
+drop policy if exists "允許公開新增課程" on public.courses;
+drop policy if exists "允許公開更新課程" on public.courses;
+drop policy if exists "允許公開刪除課程" on public.courses;
+drop policy if exists "允許已登入用戶新增自己的課程" on public.courses;
+drop policy if exists "允許已登入用戶更新自己的課程" on public.courses;
+drop policy if exists "允許已登入用戶刪除自己的課程" on public.courses;
+
 create policy "允許所有人公開讀取課程"
   on public.courses for select
   using (true);
 
-drop policy if exists "允許公開新增課程" on public.courses;
-create policy "允許公開新增課程"
+create policy "允許已登入用戶新增自己的課程"
   on public.courses for insert
-  with check (true);
+  to authenticated
+  with check (auth.uid()::text = tutor_id);
 
-drop policy if exists "允許公開更新課程" on public.courses;
-create policy "允許公開更新課程"
+create policy "允許已登入用戶更新自己的課程"
   on public.courses for update
-  using (true)
-  with check (true);
+  to authenticated
+  using (auth.uid()::text = tutor_id)
+  with check (auth.uid()::text = tutor_id);
 
-drop policy if exists "允許公開刪除課程" on public.courses;
-create policy "允許公開刪除課程"
+create policy "允許已登入用戶刪除自己的課程"
   on public.courses for delete
-  using (true);
+  to authenticated
+  using (auth.uid()::text = tutor_id);

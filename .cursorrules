@@ -5,6 +5,14 @@
 
 ---
 
+## 0. 安全與交付鐵律（最高優先）
+
+1. **每次修改或提交程式碼前**，必須確認 `.env.local` 已被 `.gitignore` 嚴格排除，**絕不**推送到 GitHub（可用 `git check-ignore -v .env.local` 驗證）。
+2. **所有資料庫查詢必須維持防禦性設計**：未填金鑰時自動降級假資料；有金鑰時讀寫真實 Supabase（見 `isSupabaseConfigured`）。
+3. **永遠保持簡潔、直接，不繞遠路**——以可運作結果為先，避免多餘抽象與冗長說明。
+
+---
+
 ## 1. 產品定位（不可偏離）
 
 - **產品名**：`idaltu`（小寫極簡文字 Logo，搭配品牌珊瑚紅識別點）。
@@ -90,7 +98,8 @@ supabase/              # schema.sql 與 RLS policies
 - **高效交付**：以功能與 UX 為主，不需頻繁寫進度日誌到檔案。
 - 回覆使用者時使用**繁體中文**。
 - 不主動 commit／push，除非使用者明確要求。
-- 機密：`.env.local` 永不提交；環境變數以 `.env.example` 為範本說明。
+- 機密：`.env.local` 永不提交；環境變數以 `.env.example` 為範本說明；Vercel 後台單獨設定同名環境變數。
+- RLS：`tutors`／`courses` 寫入必須 `auth.uid()` 綁定本人；禁止 `with check (true)` 的公開寫入政策。
 
 ---
 
@@ -98,8 +107,10 @@ supabase/              # schema.sql 與 RLS policies
 
 開發任何功能前快速自問：
 
-- [ ] 是否仍符合「導師不抽成、學員解鎖才聯繫」？
-- [ ] 聯絡資訊是否仍受解鎖／登入保護？
+- [ ] `.env.local` 是否仍被 ignore、未出現在 `git status`？
+- [ ] 無金鑰是否仍能降級啟動、有金鑰是否連真實 DB？
+- [ ] 是否仍符合「導師不抽成、學員 Student Pass 才聯繫」？
+- [ ] 聯絡資訊是否仍受登入／Pass 保護？
 - [ ] 是否沿用 `brand-500`／既有元件風格與型別？
-- [ ] 是否 Mobile-First 且有基本 a11y？
-- [ ] 導師寫入是否綁定 Auth UID？
+- [ ] Mobile-First 且有基本 a11y？
+- [ ] 導師寫入是否綁定 Auth UID（RLS 收緊）？

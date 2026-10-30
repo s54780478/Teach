@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabaseClient';
+import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 import { TeachingMode, Tutor } from '@/types/tutor';
 import { MOCK_TUTORS } from '@/data/mockTutors';
 
@@ -161,6 +161,8 @@ export function mapDbRowToTutor(row: TutorDbRow): Tutor {
 export async function getTutorProfileByUserId(
   userId: string
 ): Promise<Tutor | null> {
+  if (!isSupabaseConfigured) return null;
+
   try {
     const { data, error } = await supabase
       .from('tutors')
@@ -321,6 +323,19 @@ export async function upsertTutorCourse(
 export async function getTutorById(
   tutorId: string
 ): Promise<{ tutor: Tutor | null; isFromSupabase: boolean; error?: string }> {
+  const mockFallback = () => {
+    const mock = MOCK_TUTORS.find((t) => t.id === tutorId) || null;
+    return {
+      tutor: mock,
+      isFromSupabase: false as const,
+      error: isSupabaseConfigured ? undefined : 'Supabase 尚未設定，使用示範資料',
+    };
+  };
+
+  if (!isSupabaseConfigured) {
+    return mockFallback();
+  }
+
   try {
     const { data, error } = await supabase
       .from('tutors')
@@ -407,6 +422,14 @@ export async function searchTutors(
     });
     return next;
   };
+
+  if (!isSupabaseConfigured) {
+    return {
+      tutors: applyClientFilters(MOCK_TUTORS),
+      isFromSupabase: false,
+      error: 'Supabase 尚未設定，使用示範資料',
+    };
+  }
 
   try {
     let query = supabase.from('tutors').select('*');

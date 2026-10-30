@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { MapPin, BookOpen, X } from 'lucide-react';
 import {
   TW_CITIES,
@@ -19,6 +19,10 @@ interface CategoryFilterProps {
   setOnlyFreeLesson: (val: boolean) => void;
   sortBy: 'recommended' | 'price-asc' | 'price-desc' | 'rating';
   setSortBy: (sort: 'recommended' | 'price-asc' | 'price-desc' | 'rating') => void;
+  /** 有老師資料的科目 id；未傳入時顯示全部 */
+  availableSubjectQueries?: Set<string> | null;
+  /** 有老師資料的分類 id；未傳入時顯示全部 */
+  availableCategories?: Set<string> | null;
 }
 
 export const CategoryFilter: React.FC<CategoryFilterProps> = ({
@@ -32,11 +36,23 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   setOnlyFreeLesson,
   sortBy,
   setSortBy,
+  availableSubjectQueries = null,
+  availableCategories = null,
 }) => {
+  const subjectChips = useMemo(() => {
+    return SUBJECT_QUICK_FILTERS.filter(
+      (s) => s.id === 'all' || !availableSubjectQueries || availableSubjectQueries.has(s.id)
+    );
+  }, [availableSubjectQueries]);
+
+  const categoryChips = useMemo(() => {
+    return SUBJECT_CATEGORIES.filter(
+      (c) => c.id === 'all' || !availableCategories || availableCategories.has(c.id)
+    );
+  }, [availableCategories]);
+
   const activeSubjectChip =
-    SUBJECT_QUICK_FILTERS.find(
-      (s) => s.id !== 'all' && searchSubject.trim() === s.id
-    )?.id || 'all';
+    subjectChips.find((s) => s.id !== 'all' && searchSubject.trim() === s.id)?.id || 'all';
 
   const hasActiveFilters =
     Boolean(searchLocation.trim()) ||
@@ -117,7 +133,7 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
                   : 'bg-transparent border-white/15 text-white/65 hover:border-white/30'
               }`}
             >
-              首堂免費試教
+              首堂免費試聽
             </button>
 
             <select
@@ -166,7 +182,7 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
           <BookOpen className="w-3.5 h-3.5 text-brand-500 flex-shrink-0" aria-hidden />
           <span className="text-[11px] font-medium text-white/35 flex-shrink-0">科目</span>
-          {SUBJECT_QUICK_FILTERS.map((subject) => {
+          {subjectChips.map((subject) => {
             const isActive = activeSubjectChip === subject.id;
             return (
               <button
@@ -185,26 +201,28 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
           })}
         </div>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-          <span className="text-[11px] font-medium text-white/35 flex-shrink-0 mr-0.5">分類</span>
-          {SUBJECT_CATEGORIES.map((cat) => {
-            const isActive = activeCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setActiveCategory(cat.id)}
-                className={`px-3 py-1 rounded-full text-[11px] transition whitespace-nowrap cursor-pointer border ${
-                  isActive
-                    ? 'bg-brand-500/15 text-brand-500 border-brand-500/35 font-semibold'
-                    : 'bg-transparent text-white/50 border-white/10 hover:border-white/25'
-                }`}
-              >
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
+        {categoryChips.length > 1 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+            <span className="text-[11px] font-medium text-white/35 flex-shrink-0 mr-0.5">分類</span>
+            {categoryChips.map((cat) => {
+              const isActive = activeCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={`px-3 py-1 rounded-full text-[11px] transition whitespace-nowrap cursor-pointer border ${
+                    isActive
+                      ? 'bg-brand-500/15 text-brand-500 border-brand-500/35 font-semibold'
+                      : 'bg-transparent text-white/50 border-white/10 hover:border-white/25'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

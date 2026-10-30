@@ -21,6 +21,7 @@
 
 # env files (keep secrets local)
 .env
+.env.local
 .env.*
 !.env.example
 
@@ -55,3 +56,4 @@ Desktop.ini
 temp/
 tmp/
 .turbo/
+supabase/.temp/

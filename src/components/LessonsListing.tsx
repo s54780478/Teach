@@ -220,6 +220,7 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
           }
         }}
         onCancelPass={() => void cancelPass()}
+        tutorName={selectedTutor?.name}
       />
 
       {isContactModalOpen && studentPass.active && (
@@ -235,6 +236,11 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
+        intentHint={
+          selectedTutor
+            ? `登入後即可開通 Student Pass，聯繫「${selectedTutor.name}」並查看 LINE／電話。`
+            : null
+        }
         onSuccess={async () => {
           const { data: { session } } = await supabase.auth.getSession();
           const user = session?.user;

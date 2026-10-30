@@ -26,6 +26,8 @@ interface StudentPassModalProps {
   /** 藍新直刷（帶卡）／演示開通／定期定額 */
   onSubscribe: (card?: NewebpayCardInput) => Promise<void> | void;
   onCancelPass?: () => void;
+  /** 從「聯絡老師」進入時顯示目標導師 */
+  tutorName?: string | null;
 }
 
 const BENEFITS = [
@@ -40,6 +42,7 @@ export const StudentPassModal: React.FC<StudentPassModalProps> = ({
   onClose,
   onSubscribe,
   onCancelPass,
+  tutorName = null,
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentConfigured, setPaymentConfigured] = useState(false);
@@ -137,6 +140,16 @@ export const StudentPassModal: React.FC<StudentPassModalProps> = ({
         </div>
 
         <div className="p-5 space-y-4">
+          {!pass.active && tutorName && (
+            <div className="rounded-xl bg-brand-50 border border-brand-200/70 px-4 py-3 flex items-start gap-2.5">
+              <MessageCircle className="w-4 h-4 text-brand-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-brand-800 leading-relaxed">
+                即將聯繫 <strong>{tutorName}</strong>
+                。開通 Student Pass 後即可查看 LINE／電話並直接排課。
+              </p>
+            </div>
+          )}
+
           {pass.active ? (
             <div className="rounded-xl bg-emerald-50 border border-emerald-200/70 px-4 py-3">
               <p className="text-sm font-bold text-emerald-800">您的 Student Pass 已啟用</p>

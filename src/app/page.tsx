@@ -20,7 +20,28 @@ import { EmptySearchState } from '@/components/EmptySearchState';
 import { SiteFooter } from '@/components/SiteFooter';
 import { useStudentPass } from '@/hooks/useStudentPass';
 import { supabase } from '@/lib/supabaseClient';
+import {
+  collectAvailableCategories,
+  collectAvailableSubjectQueries,
+} from '@/lib/tutorFilters';
+import { SUBJECT_QUICK_FILTERS } from '@/data/filterOptions';
 import { RefreshCw, AlertCircle } from 'lucide-react';
+
+const SUBJECT_QUERY_IDS = SUBJECT_QUICK_FILTERS.filter((s) => s.id !== 'all').map(
+  (s) => s.id
+);
+const HERO_SUBJECT_QUERIES = [
+  '英文',
+  '國文',
+  '數學',
+  '日文',
+  '理化',
+  '程式',
+  '鋼琴',
+  '唱歌',
+  '運動',
+  '雅思',
+] as const;
 
 export default function HomePage() {
   // Search and Filter States
@@ -32,6 +53,8 @@ export default function HomePage() {
 
   // Supabase Data & Loading States
   const [tutors, setTutors] = useState<Tutor[]>([]);
+  /** 未篩選的上架目錄，用於隱藏空科目／分類 */
+  const [catalogTutors, setCatalogTutors] = useState<Tutor[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFromSupabase, setIsFromSupabase] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -88,6 +111,42 @@ export default function HomePage() {
     }, 280);
     return () => window.clearTimeout(timer);
   }, [loadData]);
+
+  // 載入完整上架目錄（科目／分類防空城）
+  useEffect(() => {
+    let cancelled = false;
+    void searchTutors({ onlyPublished: true, sortBy: 'rating' }).then((result) => {
+      if (cancelled) return;
+      setCatalogTutors(result.tutors);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const availableSubjectQueries = useMemo(() => {
+    const source = catalogTutors.length > 0 ? catalogTutors : tutors;
+    return collectAvailableSubjectQueries(source, [
+      ...SUBJECT_QUERY_IDS,
+      ...HERO_SUBJECT_QUERIES,
+    ]);
+  }, [catalogTutors, tutors]);
+
+  const availableCategories = useMemo(() => {
+    const source = catalogTutors.length > 0 ? catalogTutors : tutors;
+    return collectAvailableCategories(source);
+  }, [catalogTutors, tutors]);
+
+  // 若目前分類已無老師，自動回到「全部」
+  useEffect(() => {
+    if (
+      activeCategory !== 'all' &&
+      availableCategories.size > 0 &&
+      !availableCategories.has(activeCategory)
+    ) {
+      setActiveCategory('all');
+    }
+  }, [activeCategory, availableCategories]);
 
   // 點擊聯絡：未登入 → Auth；未訂閱 → Student Pass Modal；已訂閱 → 顯示聯絡方式
   const handleInitiateContact = (tutor: Tutor) => {
@@ -178,6 +237,7 @@ export default function HomePage() {
         setSearchSubject={setSearchSubject}
         searchLocation={searchLocation}
         setSearchLocation={setSearchLocation}
+        availableSubjectQueries={availableSubjectQueries}
       >
         <Header
           variant="hero"
@@ -214,6 +274,8 @@ export default function HomePage() {
           setOnlyFreeLesson={setOnlyFreeLesson}
           setSortBy={handleSortByFromCategory}
           sortBy={advanced.sortBy}
+          availableSubjectQueries={availableSubjectQueries}
+          availableCategories={availableCategories}
         />
 
         <main id="tutors" className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -340,6 +402,7 @@ export default function HomePage() {
         onClose={() => setIsPassModalOpen(false)}
         onSubscribe={handleSubscribePass}
         onCancelPass={() => void handleCancelPass()}
+        tutorName={selectedTutor?.name}
       />
 
       {isContactModalOpen && studentPass.active && (
@@ -356,6 +419,11 @@ export default function HomePage() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         onSuccess={handleAuthSuccess}
+        intentHint={
+          selectedTutor
+            ? `登入後即可開通 Student Pass，聯繫「${selectedTutor.name}」並查看 LINE／電話。`
+            : null
+        }
       />
     </div>
   );

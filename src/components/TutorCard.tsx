@@ -2,10 +2,24 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Heart, Star, Zap } from 'lucide-react';
+import {
+  Heart,
+  Star,
+  Zap,
+  Gift,
+  ShieldCheck,
+  GraduationCap,
+  Monitor,
+  MapPin,
+  MessageCircle,
+} from 'lucide-react';
 import { Tutor } from '@/types/tutor';
-import { TrustBadges } from '@/components/TrustBadges';
 import { getTutorTrustFlags } from '@/lib/tutorTrust';
+import {
+  formatResponseLabel,
+  teachingModeShortLabel,
+  teachingModeTags,
+} from '@/lib/tutorFilters';
 
 interface TutorCardProps {
   tutor: Tutor;
@@ -20,15 +34,12 @@ export const TutorCard: React.FC<TutorCardProps> = ({
 }) => {
   const [liked, setLiked] = useState(false);
   const trust = getTutorTrustFlags(tutor);
-
-  const modeLabel =
-    tutor.mode === 'online'
-      ? '視訊'
-      : tutor.mode === 'in-person'
-        ? '實體課程'
-        : '實體課程&視訊';
-
+  const modeTags = teachingModeTags(tutor.mode);
+  const modeShort = teachingModeShortLabel(tutor.mode);
+  const responseLabel = formatResponseLabel(tutor.responseSpeedMinutes);
   const profileHref = `/tutor/${tutor.id}`;
+  const ratingDisplay =
+    tutor.reviews.reviewCount > 0 ? tutor.reviews.rating.toFixed(1) : null;
 
   return (
     <article className="group flex flex-col animate-fade-rise">
@@ -43,10 +54,30 @@ export const TutorCard: React.FC<TutorCardProps> = ({
           alt={tutor.name}
           className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/10" />
 
-        <div className="absolute top-3 left-3 right-12 z-10">
-          <TrustBadges tutor={tutor} size="sm" variant="overlay" max={2} />
+        {/* 左上：首堂免費 + 驗證 */}
+        <div className="absolute top-3 left-3 right-12 z-10 flex flex-col items-start gap-1.5">
+          {tutor.firstLessonFree && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-white bg-brand-500 border border-brand-400/40 px-2.5 py-1 rounded-full shadow-lg shadow-brand-500/30">
+              <Gift className="w-3 h-3" strokeWidth={2.5} />
+              首堂免費試聽
+            </span>
+          )}
+          <div className="flex flex-wrap gap-1">
+            {trust.identityVerified && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-200 bg-black/45 backdrop-blur-md border border-emerald-400/35 px-2 py-0.5 rounded-full">
+                <ShieldCheck className="w-3 h-3" />
+                身分驗證
+              </span>
+            )}
+            {trust.diplomaVerified && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-200 bg-black/45 backdrop-blur-md border border-emerald-400/35 px-2 py-0.5 rounded-full">
+                <GraduationCap className="w-3 h-3" />
+                學歷認證
+              </span>
+            )}
+          </div>
         </div>
 
         <span
@@ -74,62 +105,77 @@ export const TutorCard: React.FC<TutorCardProps> = ({
         </span>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5">
+          <div className="flex flex-wrap gap-1 mb-2">
+            {modeTags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 text-[10px] font-semibold text-white/90 bg-white/15 backdrop-blur-sm border border-white/20 px-2 py-0.5 rounded-full"
+              >
+                {tag.includes('線上') ? (
+                  <Monitor className="w-2.5 h-2.5" />
+                ) : (
+                  <MapPin className="w-2.5 h-2.5" />
+                )}
+                {tag}
+              </span>
+            ))}
+          </div>
           <h3 className="text-2xl sm:text-[1.65rem] font-bold text-white tracking-tight drop-shadow-sm">
             {tutor.name}
           </h3>
-          <p className="mt-0.5 text-sm text-white/85 flex items-center gap-1.5">
-            ({modeLabel})
-            {trust.fastResponse && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-300">
-                <Zap className="w-3 h-3" />
-                {tutor.responseSpeedMinutes}分回覆
-              </span>
-            )}
-          </p>
+          <p className="mt-0.5 text-sm text-white/80">({modeShort})</p>
         </div>
       </Link>
 
-      <div className="pt-3.5 px-0.5 flex flex-col gap-2">
-        <Link href={profileHref} className="block group/title">
+      <div className="pt-3.5 px-0.5 flex flex-col gap-2.5">
+        <Link href={profileHref} className="block group/title space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0 text-sm text-white/90">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 flex-shrink-0" />
-              {tutor.reviews.reviewCount > 0 ? (
-                <span className="font-medium truncate">
-                  {tutor.reviews.rating.toFixed(0)}
-                  <span className="text-white/50 font-normal">
+              {ratingDisplay ? (
+                <span className="font-bold tabular-nums">
+                  {ratingDisplay}
+                  <span className="text-white/45 font-normal">
                     {' '}
-                    ({tutor.reviews.reviewCount}則評論)
+                    ({tutor.reviews.reviewCount} 則評價)
                   </span>
                 </span>
               ) : (
-                <span className="font-medium text-white/80">活躍老師</span>
+                <span className="font-medium text-white/75">新進活躍老師</span>
               )}
             </div>
             {trust.superTutor && (
-              <span className="flex-shrink-0 text-[11px] font-bold text-amber-200 bg-amber-500/15 border border-amber-400/25 px-2 py-0.5 rounded-full">
+              <span className="flex-shrink-0 text-[10px] font-bold text-amber-200 bg-amber-500/15 border border-amber-400/25 px-2 py-0.5 rounded-full">
                 Super Tutor
               </span>
             )}
           </div>
 
-          <p className="mt-2 text-sm text-white/55 leading-snug line-clamp-2 min-h-[2.5rem] group-hover/title:text-white/75 transition">
+          <p className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-300/95">
+            <Zap className="w-3 h-3 flex-shrink-0" />
+            {responseLabel}
+          </p>
+
+          <p className="text-sm text-white/55 leading-snug line-clamp-2 min-h-[2.5rem] group-hover/title:text-white/75 transition">
             {tutor.headline}
           </p>
         </Link>
 
-        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 pt-0.5">
+        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
           <span className="text-base font-bold text-white tabular-nums">
             NT$ {tutor.hourlyRate.toLocaleString()}
             <span className="text-sm font-semibold text-white/70">/小時</span>
           </span>
           {tutor.firstLessonFree && (
-            <span className="text-sm font-semibold text-brand-500">第一堂課免費試聽</span>
+            <span className="inline-flex items-center gap-1 text-sm font-bold text-brand-500">
+              <Gift className="w-3.5 h-3.5" />
+              首堂免費試聽
+            </span>
           )}
         </div>
 
         {isUnlocked ? (
-          <div className="mt-1 space-y-1.5">
+          <div className="space-y-1.5">
             <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100/95 space-y-1">
               <p className="font-bold text-emerald-300 flex items-center gap-1.5">
                 <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-[10px]">
@@ -137,13 +183,13 @@ export const TutorCard: React.FC<TutorCardProps> = ({
                 </span>
                 已解鎖聯絡方式
               </p>
-              {tutor.contact.lineId && (
+              {tutor.contact.lineId && tutor.contact.lineId !== '未提供' && (
                 <p className="truncate">
                   <span className="text-emerald-200/60">LINE</span>{' '}
                   <span className="font-semibold text-white">{tutor.contact.lineId}</span>
                 </p>
               )}
-              {tutor.contact.phone && (
+              {tutor.contact.phone && tutor.contact.phone !== '未提供' && (
                 <p className="truncate">
                   <span className="text-emerald-200/60">電話</span>{' '}
                   <a
@@ -159,29 +205,35 @@ export const TutorCard: React.FC<TutorCardProps> = ({
             <button
               type="button"
               onClick={() => onContact(tutor)}
-              className="self-start text-[11px] font-semibold text-white/55 hover:text-white transition cursor-pointer"
+              className="w-full inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-bold py-2.5 rounded-full transition cursor-pointer"
             >
-              開啟完整聯絡卡片 →
+              <MessageCircle className="w-3.5 h-3.5" />
+              開啟聯絡資訊
             </button>
           </div>
         ) : (
           <button
             type="button"
             onClick={() => onContact(tutor)}
-            className="mt-1 self-start text-xs font-semibold text-white/75 hover:text-brand-500 transition cursor-pointer text-left leading-snug"
+            className="w-full inline-flex items-center justify-center gap-2 bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white text-sm font-bold py-2.5 rounded-full transition cursor-pointer shadow-md shadow-brand-500/25"
+            aria-label={`聯絡 ${tutor.name}`}
           >
-            解鎖聯絡方式
-            <span className="block text-[10px] font-medium text-white/40 mt-0.5">
-              需 Student Pass
-            </span>
+            <MessageCircle className="w-4 h-4" />
+            聯絡老師
           </button>
+        )}
+
+        {!isUnlocked && (
+          <p className="text-center text-[10px] text-white/40 -mt-1">
+            登入並開通 Student Pass 即可查看 LINE／電話
+          </p>
         )}
 
         <Link
           href={profileHref}
-          className="text-[11px] font-medium text-white/35 hover:text-white/70 transition self-start"
+          className="text-[11px] font-medium text-white/35 hover:text-white/70 transition self-center sm:self-start"
         >
-          查看完整履歷 →
+          查看完整履歷與評價 →
         </Link>
       </div>
     </article>

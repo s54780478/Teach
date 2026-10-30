@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BookOpen,
@@ -37,6 +37,8 @@ interface HomeHeroProps {
   searchLocation: string;
   setSearchLocation: (val: string) => void;
   onSearch?: () => void;
+  /** 有老師資料的科目關鍵字；未傳入時顯示全部 */
+  availableSubjectQueries?: Set<string> | null;
   children?: React.ReactNode;
 }
 
@@ -46,9 +48,15 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
   searchLocation,
   setSearchLocation,
   onSearch,
+  availableSubjectQueries = null,
   children,
 }) => {
   const router = useRouter();
+
+  const visibleCategories = useMemo(() => {
+    if (!availableSubjectQueries) return [...HERO_CATEGORIES];
+    return HERO_CATEGORIES.filter((cat) => availableSubjectQueries.has(cat.query));
+  }, [availableSubjectQueries]);
 
   const goToLessons = (subject: string, location: string) => {
     const path = buildLessonsPath(location || 'all', subject || 'all');
@@ -136,38 +144,42 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
             </div>
           </form>
 
-          <div
-            className="mt-7 sm:mt-8 relative max-w-3xl mx-auto animate-fade-rise"
-            style={{ animationDelay: '180ms' }}
-          >
-            <div className="flex items-center gap-1 overflow-x-auto scrollbar-none rounded-full bg-white/[0.06] border border-white/10 px-2 py-2.5 pl-3 pr-10">
-              {HERO_CATEGORIES.map((cat) => {
-                const Icon = cat.icon;
-                const active = searchSubject === cat.query;
-                return (
-                  <button
-                    key={cat.label}
-                    type="button"
-                    onClick={() => {
-                      setSearchSubject(cat.query);
-                      goToLessons(cat.query, searchLocation || 'all');
-                    }}
-                    className={`flex flex-col items-center gap-1 min-w-[4.25rem] px-1.5 py-1.5 rounded-2xl transition duration-200 cursor-pointer ${
-                      active
-                        ? 'text-brand-500 bg-brand-500/10'
-                        : 'text-white/65 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5 transition-transform duration-200 group-hover:scale-110" strokeWidth={1.5} />
-                    <span className="text-[10px] font-medium whitespace-nowrap">{cat.label}</span>
-                  </button>
-                );
-              })}
+          {visibleCategories.length > 0 && (
+            <div
+              className="mt-7 sm:mt-8 relative max-w-3xl mx-auto animate-fade-rise"
+              style={{ animationDelay: '180ms' }}
+            >
+              <div className="flex items-center gap-1 overflow-x-auto scrollbar-none rounded-full bg-white/[0.06] border border-white/10 px-2 py-2.5 pl-3 pr-10">
+                {visibleCategories.map((cat) => {
+                  const Icon = cat.icon;
+                  const active = searchSubject === cat.query;
+                  return (
+                    <button
+                      key={cat.label}
+                      type="button"
+                      onClick={() => {
+                        setSearchSubject(cat.query);
+                        goToLessons(cat.query, searchLocation || 'all');
+                      }}
+                      className={`flex flex-col items-center gap-1 min-w-[4.25rem] px-1.5 py-1.5 rounded-2xl transition duration-200 cursor-pointer ${
+                        active
+                          ? 'text-brand-500 bg-brand-500/10'
+                          : 'text-white/65 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" strokeWidth={1.5} />
+                      <span className="text-[10px] font-medium whitespace-nowrap">{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {visibleCategories.length > 5 && (
+                <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center">
+                  <ChevronRight className="w-4 h-4 text-white/70" />
+                </div>
+              )}
             </div>
-            <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center">
-              <ChevronRight className="w-4 h-4 text-white/70" />
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </section>

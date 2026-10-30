@@ -9,6 +9,8 @@ interface AuthModalProps {
   onClose: () => void;
   onSuccess: () => void;
   defaultMode?: 'login' | 'signup';
+  /** 聯絡老師流程等情境提示 */
+  intentHint?: string | null;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -16,6 +18,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   onSuccess,
   defaultMode = 'login',
+  intentHint = null,
 }) => {
   const [mode, setMode] = useState<'login' | 'signup'>(defaultMode);
   const [email, setEmail] = useState('');
@@ -72,8 +75,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           onClose();
         }, 600);
       }
-    } catch (err: any) {
-      setErrorMsg(err?.message || '操作失敗，請稍後再試');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : '操作失敗，請稍後再試');
     } finally {
       setIsLoading(false);
     }
@@ -137,7 +140,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="px-5 pb-5 space-y-3.5">
-          
+          {intentHint && (
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-2 text-xs text-slate-700 leading-normal">
+              <Lock className="w-4 h-4 text-brand-500 flex-shrink-0 mt-0.5" />
+              <span>{intentHint}</span>
+            </div>
+          )}
+
           {/* Welcome Bonus Notice for Sign Up */}
           {mode === 'signup' && (
             <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl flex items-start gap-2 text-xs text-rose-800 leading-normal">

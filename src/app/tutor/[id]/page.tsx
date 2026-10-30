@@ -479,6 +479,7 @@ export default function TutorPublicProfilePage() {
           await cancelPass();
           setIsContactModalOpen(false);
         }}
+        tutorName={tutor?.name}
       />
 
       {isContactModalOpen && studentPass.active && (
@@ -495,6 +496,11 @@ export default function TutorPublicProfilePage() {
           setPendingContact(false);
         }}
         onSuccess={handleAuthSuccess}
+        intentHint={
+          pendingContact && tutor
+            ? `登入後即可開通 Student Pass，聯繫「${tutor.name}」並查看 LINE／電話。`
+            : null
+        }
       />
 
       <UnlockedTutorsDrawer
