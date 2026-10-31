@@ -4,6 +4,7 @@ import {
   teachingModeShortFromModes,
   modesFromLegacyMode,
 } from '@/lib/teachingModes';
+import { resolveCategoryId, tutorBelongsToCategory } from '@/data/taxonomySeed';
 
 /** 科目／關鍵字是否命中導師公開欄位 */
 export function tutorMatchesKeyword(tutor: Tutor, keyword: string): boolean {
@@ -69,10 +70,14 @@ export function collectAvailableSubjectQueries(
   return available;
 }
 
-/** 目錄中實際存在的 subjectCategory id */
+/** 目錄中實際存在的大類 id（taxonomy 第一層） */
 export function collectAvailableCategories(tutors: Tutor[]): Set<string> {
-  return new Set(tutors.map((t) => t.subjectCategory).filter(Boolean));
+  return new Set(
+    tutors.map((t) => t.categoryId || resolveCategoryId(t.subjectCategory)).filter(Boolean)
+  );
 }
+
+export { tutorBelongsToCategory };
 
 /** 依地區／科目關鍵字過濾導師（首頁與 SEO 分類頁共用） */
 export function filterTutorsByRegionSubject(
@@ -104,7 +109,17 @@ export function filterTutorsByRegionSubject(
       const matchTags = tutor.specialtyTags.some((t) => t.toLowerCase().includes(subject));
       const matchHeadline = tutor.headline.toLowerCase().includes(subject);
       const matchDegree = tutor.verification.degree.toLowerCase().includes(subject);
-      if (!matchName && !matchCategory && !matchTags && !matchHeadline && !matchDegree) {
+      const matchCatId =
+        tutor.categoryId === subject ||
+        resolveCategoryId(tutor.subjectCategory) === subject;
+      if (
+        !matchName &&
+        !matchCategory &&
+        !matchTags &&
+        !matchHeadline &&
+        !matchDegree &&
+        !matchCatId
+      ) {
         return false;
       }
     }

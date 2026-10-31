@@ -39,6 +39,10 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { LogoHomeLink } from '@/components/LogoHomeLink';
+import { TaxonomyPicker } from '@/components/TaxonomyPicker';
+import { categoryDisplayName } from '@/data/taxonomySeed';
+import { selectionFromLegacy } from '@/lib/taxonomyService';
+import type { TutorTaxonomySelection } from '@/types/taxonomy';
 
 const STEPS = [
   { id: 1, title: '基本資料', icon: UserRound },
@@ -46,44 +50,14 @@ const STEPS = [
   { id: 3, title: '聯絡方式', icon: Phone },
 ] as const;
 
-const SUBJECT_CATEGORIES = [
-  '數理升學',
-  '外語學習',
-  '程式設計',
-  '音樂藝術',
-  '體育運動',
-  '語文寫作',
-  '商業金融',
-  '其他',
-];
-
-
-/** 台灣升學／在地常用科目標籤 */
-const TW_SUBJECT_TAGS = [
-  '中壢高中數學',
-  '國中理化',
-  '國中數學',
-  '高中物理',
-  '高中化學',
-  '學測英文',
-  '學測國文',
-  '分科測驗',
-  '會考衝刺',
-  '國小作文',
-  '雅思口說',
-  '多益900+',
-  'JLPT 日文',
-  'Python 入門',
-  '家教到府',
-  '一對一',
-];
-
 interface FormState {
   name: string;
   avatarUrl: string;
   headline: string;
   subjectCategory: string;
   specialtyTags: string[];
+  categoryId: string;
+  subcategoryId: string;
   city: string;
   district: string;
   teachingModes: TeachingModeOption[];
@@ -100,8 +74,10 @@ const INITIAL_FORM: FormState = {
   name: '',
   avatarUrl: '',
   headline: '',
-  subjectCategory: '數理升學',
+  subjectCategory: categoryDisplayName('academic'),
   specialtyTags: [],
+  categoryId: 'academic',
+  subcategoryId: 'academic-junior-math',
   city: '',
   district: '',
   teachingModes: ['online', 'in_person', 'student_home'],
@@ -122,7 +98,6 @@ export default function TutorApplyPage() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
-  const [tagInput, setTagInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -155,8 +130,22 @@ export default function TutorApplyPage() {
           ? ''
           : existing.avatarUrl || '',
         headline: existing.headline.slice(0, 50),
-        subjectCategory: existing.subjectCategory || '數理升學',
+        subjectCategory:
+          existing.subjectCategory || categoryDisplayName('academic'),
         specialtyTags: existing.specialtyTags || [],
+        categoryId:
+          existing.categoryId ||
+          selectionFromLegacy({
+            subjectCategory: existing.subjectCategory,
+            specialtyTags: existing.specialtyTags,
+          }).categoryId,
+        subcategoryId:
+          existing.subcategoryId ||
+          selectionFromLegacy({
+            subjectCategory: existing.subjectCategory,
+            specialtyTags: existing.specialtyTags,
+            categoryId: existing.categoryId,
+          }).subcategoryId,
         city: existing.location.city,
         district: existing.location.district,
         teachingModes:
@@ -187,24 +176,15 @@ export default function TutorApplyPage() {
     setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
   };
 
-  const toggleTag = (tag: string) => {
+  const setTaxonomy = (next: TutorTaxonomySelection) => {
     setForm((prev) => ({
       ...prev,
-      specialtyTags: prev.specialtyTags.includes(tag)
-        ? prev.specialtyTags.filter((t) => t !== tag)
-        : [...prev.specialtyTags, tag],
+      categoryId: next.categoryId,
+      subcategoryId: next.subcategoryId,
+      specialtyTags: next.tags,
+      subjectCategory: categoryDisplayName(next.categoryId),
     }));
-  };
-
-  const addCustomTag = () => {
-    const trimmed = tagInput.trim();
-    if (trimmed && !form.specialtyTags.includes(trimmed)) {
-      setForm((prev) => ({
-        ...prev,
-        specialtyTags: [...prev.specialtyTags, trimmed],
-      }));
-    }
-    setTagInput('');
+    setFieldErrors((prev) => ({ ...prev, specialtyTags: undefined }));
   };
 
   const validateStep = (currentStep: number): boolean => {
@@ -292,6 +272,8 @@ export default function TutorApplyPage() {
       degree: form.degree.trim(),
       specialtyTags: form.specialtyTags,
       subjectCategory: form.subjectCategory,
+      categoryId: form.categoryId,
+      subcategoryId: form.subcategoryId,
       city: form.city.trim(),
       district: form.district.trim(),
       teachingModes: form.teachingModes,
@@ -511,94 +493,15 @@ export default function TutorApplyPage() {
                 )}
               </div>
 
-              <div>
-                <label htmlFor="subjectCategory" className="block text-xs font-medium text-slate-700 mb-1.5">
-                  主要科目分類
-                </label>
-                <select
-                  id="subjectCategory"
-                  value={form.subjectCategory}
-                  onChange={(e) => setField('subjectCategory', e.target.value)}
-                  className={inputClass()}
-                >
-                  {SUBJECT_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <p className="block text-xs font-medium text-slate-700 mb-1.5">
-                  教授科目（台灣升學標籤） <span className="text-brand-500">*</span>
-                </p>
-                <p className="text-[11px] text-slate-400 mb-2">
-                  點選標籤，或自行輸入如「中壢高中數學」後按 Enter
-                </p>
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {TW_SUBJECT_TAGS.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => toggleTag(tag)}
-                      className={`text-[11px] px-2.5 py-1 rounded-full border transition cursor-pointer ${
-                        form.specialtyTags.includes(tag)
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
-                      }`}
-                    >
-                      {tag}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addCustomTag();
-                      }
-                    }}
-                    placeholder="自訂科目，按 Enter 新增"
-                    className={`flex-1 ${inputClass()}`}
-                    aria-label="自訂教授科目"
-                  />
-                  <button
-                    type="button"
-                    onClick={addCustomTag}
-                    className="text-xs font-semibold px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition cursor-pointer"
-                  >
-                    新增
-                  </button>
-                </div>
-                {fieldErrors.specialtyTags && (
-                  <p className="text-xs text-rose-500 mt-1">{fieldErrors.specialtyTags}</p>
-                )}
-                {form.specialtyTags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {form.specialtyTags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 text-[11px] bg-rose-50 text-rose-700 border border-rose-200/60 px-2.5 py-1 rounded-full"
-                      >
-                        {tag}
-                        <button
-                          type="button"
-                          onClick={() => toggleTag(tag)}
-                          className="font-bold leading-none cursor-pointer"
-                          aria-label={`移除 ${tag}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <TaxonomyPicker
+                value={{
+                  categoryId: form.categoryId,
+                  subcategoryId: form.subcategoryId,
+                  tags: form.specialtyTags,
+                }}
+                onChange={setTaxonomy}
+                error={fieldErrors.specialtyTags}
+              />
 
               <div>
                 <label htmlFor="degree" className="block text-xs font-medium text-slate-700 mb-1.5">

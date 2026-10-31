@@ -14,6 +14,7 @@ import {
   responseTimeToMinutes,
   tutorMatchesModeFilter,
 } from '@/lib/teachingModes';
+import { syncTutorTaxonomy } from '@/lib/taxonomyService';
 
 /** 僅本機開發可強制假資料；正式環境一律忽略此開關 */
 function shouldForceMockTutors(): boolean {
@@ -21,6 +22,23 @@ function shouldForceMockTutors(): boolean {
     process.env.NODE_ENV === 'development' &&
     process.env.NEXT_PUBLIC_USE_MOCK_TUTORS === 'true'
   );
+}
+
+/** 冷啟動示範導師 id（tutor-1…），與真實註冊 UUID 分開 */
+function isDemoTutorId(id: string): boolean {
+  return /^tutor-\d+$/.test(id);
+}
+
+/**
+ * 列表一律帶上程式內示範導師（新照片／較多人數），
+ * 並隱藏 DB 裡同 id 的舊 seed；真實註冊導師（如 UUID）照常顯示。
+ */
+function mergeDemoCatalog(dbTutors: Tutor[]): Tutor[] {
+  const real = dbTutors.filter((t) => !isDemoTutorId(t.id));
+  const byId = new Map<string, Tutor>();
+  for (const t of MOCK_TUTORS) byId.set(t.id, t);
+  for (const t of real) byId.set(t.id, t);
+  return Array.from(byId.values());
 }
 
 /** Supabase tutors 列（與 schema + tutor_superprof_fields.sql 對齊） */
@@ -33,6 +51,8 @@ export interface TutorDbRow {
   degree: string | null;
   specialty_tags: string[] | null;
   subject_category: string | null;
+  category_id?: string | null;
+  subcategory_id?: string | null;
   city: string | null;
   district: string | null;
   display_location: string | null;
@@ -130,6 +150,8 @@ export interface TutorProfileInput {
   degree: string;
   specialtyTags: string[];
   subjectCategory: string;
+  categoryId?: string;
+  subcategoryId?: string;
   city: string;
   district: string;
   /** 相容欄位；若有 teachingModes 則由 modes 推導 */
@@ -191,6 +213,8 @@ export function mapDbRowToTutor(row: TutorDbRow): Tutor {
     isVerified,
     specialtyTags: Array.isArray(row.specialty_tags) ? row.specialty_tags : [],
     subjectCategory: row.subject_category || '未分類',
+    categoryId: row.category_id || undefined,
+    subcategoryId: row.subcategory_id || undefined,
     location: {
       city: row.city || '台北市',
       district: row.district || '',
@@ -280,6 +304,8 @@ export async function upsertTutorProfile(
       degree: input.degree.trim() || null,
       specialty_tags: input.specialtyTags,
       subject_category: input.subjectCategory,
+      category_id: input.categoryId || null,
+      subcategory_id: input.subcategoryId || null,
       city: input.city.trim(),
       district: input.district.trim() || null,
       display_location: displayLocation,
@@ -306,9 +332,15 @@ export async function upsertTutorProfile(
       if (error) {
         console.error('⚠️ 更新導師履歷失敗:', error.message);
         // 若尚未執行 tutor_superprof_fields.sql，降級寫入舊欄位
-        if (/teaching_modes|free_lesson_minutes|response_time/i.test(error.message)) {
-          const { teaching_modes: _tm, free_lesson_minutes: _fl, response_time: _rt, ...legacy } =
-            sharedFields;
+        if (/teaching_modes|free_lesson_minutes|response_time|category_id|subcategory_id/i.test(error.message)) {
+          const {
+            teaching_modes: _tm,
+            free_lesson_minutes: _fl,
+            response_time: _rt,
+            category_id: _c,
+            subcategory_id: _s,
+            ...legacy
+          } = sharedFields;
           const retry = await supabase.from('tutors').update(legacy).eq('id', userId);
           if (retry.error) return { success: false, error: retry.error.message };
           return { success: true };
@@ -330,9 +362,15 @@ export async function upsertTutorProfile(
 
       if (error) {
         console.error('⚠️ 新增導師履歷失敗:', error.message);
-        if (/teaching_modes|free_lesson_minutes|response_time/i.test(error.message)) {
-          const { teaching_modes: _tm, free_lesson_minutes: _fl, response_time: _rt, ...legacy } =
-            sharedFields;
+        if (/teaching_modes|free_lesson_minutes|response_time|category_id|subcategory_id/i.test(error.message)) {
+          const {
+            teaching_modes: _tm,
+            free_lesson_minutes: _fl,
+            response_time: _rt,
+            category_id: _c,
+            subcategory_id: _s,
+            ...legacy
+          } = sharedFields;
           const retry = await supabase.from('tutors').insert([
             {
               id: userId,
@@ -354,6 +392,22 @@ export async function upsertTutorProfile(
     const courseSync = await upsertTutorCourse(userId, input);
     if (!courseSync.success) {
       console.warn('⚠️ courses 同步提示:', courseSync.error);
+    }
+
+    // 第三層動態標籤池＋tutor_tags（taxonomy 表尚未建立時不阻斷）
+    if (input.categoryId) {
+      const tagSync = await syncTutorTaxonomy(
+        userId,
+        {
+          categoryId: input.categoryId,
+          subcategoryId: input.subcategoryId || '',
+          tags: input.specialtyTags,
+        },
+        userId
+      );
+      if (tagSync.error) {
+        console.warn('⚠️ taxonomy 同步提示:', tagSync.error);
+      }
     }
 
     return { success: true };
@@ -434,6 +488,11 @@ export async function getTutorById(
       error: isSupabaseConfigured ? undefined : 'Supabase 尚未設定，使用示範資料',
     };
   };
+
+  // 示範導師一律用程式名單（避免正式 DB 舊 seed 照片／外師錯置）
+  if (isDemoTutorId(tutorId)) {
+    return mockFallback();
+  }
 
   if (!isSupabaseConfigured || shouldForceMockTutors()) {
     return mockFallback();
@@ -568,18 +627,10 @@ export async function searchTutors(
       };
     }
 
-    if (!data || data.length === 0) {
-      // 若有篩選條件導致空結果，不要誤用 mock；無任何資料時才降級
-      if (!region && !subject && minRate == null && maxRate == null && mode === 'all') {
-        return { tutors: applyClientFilters(MOCK_TUTORS), isFromSupabase: false };
-      }
-      return { tutors: [], isFromSupabase: true };
-    }
-
-    // 地區／科目於前端補強（多欄位模糊比對）；時薪／模式已在 SQL 處理，此處只做地區科目與排序
-    let mapped = data.map((row) => mapDbRowToTutor(row as TutorDbRow));
-    mapped = applyClientFilters(mapped);
-    return { tutors: mapped, isFromSupabase: true };
+    const mapped = (data || []).map((row) => mapDbRowToTutor(row as TutorDbRow));
+    // 正式站也合併示範導師，冷啟動看起來人很多；真實註冊導師一併保留
+    const merged = mergeDemoCatalog(mapped);
+    return { tutors: applyClientFilters(merged), isFromSupabase: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : '連線失敗';
     console.error('⚠️ searchTutors 異常:', err);

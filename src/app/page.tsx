@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabaseClient';
 import {
   collectAvailableCategories,
   collectAvailableSubjectQueries,
+  tutorBelongsToCategory,
 } from '@/lib/tutorFilters';
 import { SUBJECT_QUICK_FILTERS } from '@/data/filterOptions';
 import { authIntentForTutor } from '@/lib/contactFlowCopy';
@@ -222,7 +223,13 @@ export default function HomePage() {
 
   const filteredTutors = useMemo(() => {
     return tutors.filter((tutor) => {
-      if (activeCategory !== 'all' && tutor.subjectCategory !== activeCategory) return false;
+      if (
+        activeCategory !== 'all' &&
+        tutor.categoryId !== activeCategory &&
+        !tutorBelongsToCategory(tutor.subjectCategory, activeCategory)
+      ) {
+        return false;
+      }
       if (onlyFreeLesson && !tutor.firstLessonFree) return false;
       return true;
     });

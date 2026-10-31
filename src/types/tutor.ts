@@ -34,7 +34,12 @@ export interface Tutor {
   /** 綜合驗證標章（身分或學歷任一通過） */
   isVerified: boolean;
   specialtyTags: string[];
+  /** 顯示用大類名稱（與 taxonomy 第一層 name 對齊） */
   subjectCategory: string;
+  /** 三層 taxonomy：大類 id（academic…） */
+  categoryId?: string;
+  /** 三層 taxonomy：子類 id */
+  subcategoryId?: string;
   location: {
     city: string;
     district: string;

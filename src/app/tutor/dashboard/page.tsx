@@ -53,6 +53,7 @@ import { AvatarPhotoField } from '@/components/AvatarPhotoField';
 import { SiteFooter } from '@/components/SiteFooter';
 import { LogoHomeLink } from '@/components/LogoHomeLink';
 import { useStudentPass } from '@/hooks/useStudentPass';
+import { TAXONOMY_CATEGORIES } from '@/data/taxonomySeed';
 
 const MODE_LABEL: Record<TeachingMode, string> = {
   'in-person': '面對面授課',
@@ -60,16 +61,7 @@ const MODE_LABEL: Record<TeachingMode, string> = {
   hybrid: '實體 + 線上',
 };
 
-const CATEGORIES = [
-  '數理升學',
-  '外語學習',
-  '程式設計',
-  '音樂藝術',
-  '體育運動',
-  '語文寫作',
-  '商業金融',
-  '其他',
-];
+const CATEGORIES = TAXONOMY_CATEGORIES.map((c) => c.name);
 
 interface EditFormState {
   title: string;

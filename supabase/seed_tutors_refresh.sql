@@ -1,5 +1,8 @@
--- 刷新示範導師（12 位）：台灣／東亞真人肖像 + 科目對齊
+-- 刷新示範導師（18 位）：台灣／東亞真人肖像 + 科目對齊
 -- 於 Supabase SQL Editor 整段執行（會刪除 id 為 tutor-% 的舊示範列）
+-- 真實註冊導師（UUID）不會被刪除
+--
+-- 注意：前端也會合併 MOCK_TUTORS，即使未跑此腳本，正式站列表仍會顯示示範導師。
 
 delete from public.tutors where id like 'tutor-%';
 
@@ -153,4 +156,76 @@ insert into public.tutors (
   array['online','in_person','student_home']::text[],
   920, true, 60, 9, '通常在 1 小時內回覆', 160, 4.8, 33, '熱門首選',
   'kaijie_toeic', '0911-445-778', 'kaijie.cheng@idaltu.tw', true, true
+),
+(
+  'tutor-13', '蔡昕妤',
+  '北藝大美術｜素描、插畫與作品集輔導',
+  '素描基礎、數位插畫與升學作品集整理。台中西屯工作室面授，作品討論也可線上。',
+  'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=crop&w=800&h=800&q=80&crop=faces',
+  '國立臺北藝術大學 美術學系',
+  array['美術','素描','插畫','作品集']::text[],
+  '音樂藝術', '台中市', '西屯區', '台中市西屯區 / 線上', 'hybrid',
+  array['online','in_person','student_home']::text[],
+  850, true, 45, 16, '通常在 1 小時內回覆', 120, 4.9, 24, '熱門首選',
+  'hsinyu_art', '0987-221-334', 'hsinyu.tsai@idaltu.tw', true, true
+),
+(
+  'tutor-14', '何俊緯',
+  '成大外文｜韓文會話與 TOPIK',
+  '韓語聽說與 TOPIK II 讀解寫作，適合想留學或追戲劇練聽力的學員。高雄可面授、全台線上。',
+  'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=800&h=800&q=80&crop=faces',
+  '國立成功大學 外國語文學系',
+  array['韓文','TOPIK','韓文會話','外語']::text[],
+  '外語學習', '高雄市', '左營區', '高雄市左營區 / 線上', 'hybrid',
+  array['online','in_person','student_home']::text[],
+  820, true, 60, 13, '通常在 1 小時內回覆', 140, 4.8, 28, '新星特選',
+  'chunwei_kr', '0915-668-902', 'chunwei.ho@idaltu.tw', true, true
+),
+(
+  'tutor-15', '楊子萱',
+  '師大英語｜國中會考英文與會話',
+  '會考英文閱讀聽力與口說練習，節奏清楚、作業精簡。桃園中壢可面授或線上。',
+  'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&h=800&q=80&crop=faces',
+  '國立臺灣師範大學 英語學系',
+  array['會考英文','國中英文','英文會話','聽力']::text[],
+  '外語學習', '桃園市', '中壢區', '桃園市中壢區 / 線上', 'hybrid',
+  array['online','in_person','student_home']::text[],
+  750, true, 60, 17, '通常在 1 小時內回覆', 210, 5.0, 45, '金牌導師',
+  'tzuhsuan_eng', '0932-114-556', 'tzuhsuan.yang@idaltu.tw', true, true
+),
+(
+  'tutor-16', '羅威廷',
+  '北市大音樂｜吉他與烏克麗麗入門',
+  '木吉他、烏克麗麗與自彈自唱入門，曲目從流行到民謠。三重、蘆洲可到府或咖啡廳。',
+  'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?auto=format&fit=crop&w=800&h=800&q=80&crop=faces',
+  '臺北市立大學 音樂學系',
+  array['吉他','烏克麗麗','音樂','自彈自唱']::text[],
+  '音樂藝術', '新北市', '三重區', '新北市三重區 / 面授', 'in-person',
+  array['in_person','student_home']::text[],
+  780, true, 30, 21, '通常在 1 小時內回覆', 95, 4.9, 18, '新星特選',
+  'weiting_guitar', '0970-883-221', 'weiting.lo@idaltu.tw', true, true
+),
+(
+  'tutor-17', '江品妍',
+  '台大社會｜小論文與自主學習指導',
+  '高中小論文架構、資料蒐集與口試練習；也陪自主學習歷程檔案。公館可面授、全台線上。',
+  'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=800&h=800&q=80&crop=faces',
+  '國立臺灣大學 社會學系',
+  array['小論文','自主學習','口試','寫作']::text[],
+  '語文寫作', '台北市', '大安區', '台北市大安區 / 線上', 'hybrid',
+  array['online','in_person','student_home']::text[],
+  900, true, 45, 12, '通常在 1 小時內回覆', 88, 4.9, 21, '熱門首選',
+  'pinyan_thesis', '0919-774-330', 'pinyan.chiang@idaltu.tw', true, true
+),
+(
+  'tutor-18', '陳冠宇',
+  '政大政治｜學測社會與公民素養',
+  '學測社會科時事整合與公民論述，著重抓題幹與寫短論。新竹竹北可面授或線上。',
+  'https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=crop&w=800&h=800&q=80&crop=faces',
+  '國立政治大學 政治學系',
+  array['學測社會','公民','社會科','時事']::text[],
+  '語文寫作', '新竹縣', '竹北市', '新竹縣竹北市 / 線上', 'hybrid',
+  array['online','in_person','student_home']::text[],
+  860, true, 60, 15, '通常在 1 小時內回覆', 105, 4.8, 26, '金牌導師',
+  'kuanyu_social', '0926-441-178', 'kuanyu.chen@idaltu.tw', true, true
 );

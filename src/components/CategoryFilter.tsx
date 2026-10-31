@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { Gift, Monitor, MapPin, X } from 'lucide-react';
-import { SUBJECT_QUICK_FILTERS } from '@/data/filterOptions';
+import { SUBJECT_CATEGORIES, SUBJECT_QUICK_FILTERS } from '@/data/filterOptions';
 import type { AdvancedFilterValues } from '@/components/AdvancedFilterPanel';
 
 interface CategoryFilterProps {
@@ -30,8 +30,8 @@ const MODE_CHIPS: { id: AdvancedFilterValues['mode']; label: string }[] = [
 
 /** Superprof 式淺色頂部篩選列 */
 export const CategoryFilter: React.FC<CategoryFilterProps> = ({
-  activeCategory: _activeCategory,
-  setActiveCategory: _setActiveCategory,
+  activeCategory,
+  setActiveCategory,
   searchSubject,
   setSearchSubject,
   onlyFreeLesson,
@@ -41,11 +41,15 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   sortBy,
   setSortBy,
   availableSubjectQueries = null,
+  availableCategories = null,
   onClearAll,
   hasActiveFilters = false,
 }) => {
-  void _activeCategory;
-  void _setActiveCategory;
+  const categoryChips = useMemo(() => {
+    return SUBJECT_CATEGORIES.filter(
+      (c) => c.id === 'all' || !availableCategories || availableCategories.has(c.id)
+    );
+  }, [availableCategories]);
 
   const subjectChips = useMemo(() => {
     return SUBJECT_QUICK_FILTERS.filter(
@@ -127,6 +131,26 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
               清除
             </button>
           )}
+        </div>
+
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+          {categoryChips.map((cat) => {
+            const isActive = activeCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setActiveCategory(cat.id)}
+                className={`px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
+                  isActive
+                    ? 'bg-brand-500 text-white font-semibold'
+                    : 'bg-white text-[#424245] border border-black/10 hover:border-black/20'
+                }`}
+              >
+                {cat.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
