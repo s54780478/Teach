@@ -77,10 +77,10 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header
-      className={`relative z-40 ${
+      className={`sticky top-0 z-50 w-full ${
         isHero
-          ? 'bg-transparent'
-          : 'sticky top-0 bg-white/95 backdrop-blur-md border-b border-black/[0.06]'
+          ? 'bg-white/85 backdrop-blur-md border-b border-black/[0.04]'
+          : 'bg-white/95 backdrop-blur-md border-b border-black/[0.06]'
       }`}
     >
       {/* 全寬：Logo 永遠貼左、導覽永遠貼右（不隨內容欄置中縮進） */}
@@ -139,6 +139,43 @@ export const Header: React.FC<HeaderProps> = ({
                     role="menu"
                     className="absolute right-0 mt-1.5 w-52 rounded-2xl border border-black/5 bg-white shadow-lg py-1.5 z-50"
                   >
+                    <Link
+                      href="/account"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-800 hover:bg-slate-50 transition"
+                    >
+                      <User className="w-4 h-4 text-brand-500" />
+                      用戶中心
+                    </Link>
+                    <Link
+                      href="/account/messages"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-800 hover:bg-slate-50 transition"
+                    >
+                      <KeyRound className="w-4 h-4 text-slate-400" />
+                      訊息中心
+                    </Link>
+                    <Link
+                      href="/tutor/apply"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-800 hover:bg-slate-50 transition"
+                    >
+                      <Sparkles className="w-4 h-4 text-slate-400" />
+                      刊登課程
+                    </Link>
+                    <div className="my-1.5 border-t border-slate-100" />
+                    <Link
+                      href="/account/profile"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-800 hover:bg-slate-50 transition"
+                    >
+                      <LayoutDashboard className="w-4 h-4 text-slate-400" />
+                      帳戶
+                    </Link>
                     <button
                       type="button"
                       role="menuitem"
@@ -162,15 +199,6 @@ export const Header: React.FC<HeaderProps> = ({
                         我的課程管理
                       </Link>
                     )}
-                    <Link
-                      href="/tutor/edit"
-                      role="menuitem"
-                      onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-800 hover:bg-slate-50 transition"
-                    >
-                      <Sparkles className="w-4 h-4 text-slate-400" />
-                      編輯履歷／課程
-                    </Link>
                     <button
                       type="button"
                       role="menuitem"

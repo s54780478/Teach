@@ -49,6 +49,7 @@ import {
 } from '@/lib/formHelpers';
 import { Header } from '@/components/Header';
 import { AuthModal } from '@/components/AuthModal';
+import { AvatarPhotoField } from '@/components/AvatarPhotoField';
 import { SiteFooter } from '@/components/SiteFooter';
 import { LogoHomeLink } from '@/components/LogoHomeLink';
 import { useStudentPass } from '@/hooks/useStudentPass';
@@ -639,31 +640,21 @@ export default function TutorDashboardPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-4">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={
-                          profileForm.avatarUrl ||
-                          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profileForm.name || 'T')}&backgroundColor=f9a8d4`
+                    {currentUser && (
+                      <AvatarPhotoField
+                        userId={currentUser.id}
+                        nameForFallback={profileForm.name}
+                        value={
+                          profileForm.avatarUrl.includes('api.dicebear.com')
+                            ? ''
+                            : profileForm.avatarUrl
                         }
-                        alt=""
-                        className="w-16 h-16 rounded-2xl object-cover border border-slate-200 bg-slate-100"
+                        onChange={(url) =>
+                          setProfileForm({ ...profileForm, avatarUrl: url })
+                        }
+                        disabled={isSavingProfile}
                       />
-                      <div className="flex-1 min-w-0">
-                        <label className="block text-xs font-medium text-slate-500 mb-1" htmlFor="pf-avatar">
-                          頭像圖片網址
-                        </label>
-                        <input
-                          id="pf-avatar"
-                          value={profileForm.avatarUrl}
-                          onChange={(e) =>
-                            setProfileForm({ ...profileForm, avatarUrl: e.target.value })
-                          }
-                          placeholder="https://…"
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
-                        />
-                      </div>
-                    </div>
+                    )}
 
                     <div className="grid sm:grid-cols-2 gap-3">
                       <div>

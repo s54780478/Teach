@@ -74,20 +74,21 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
   const isOnline = searchLocation.trim() === ONLINE_LOCATION;
 
   return (
-    <section className="relative overflow-hidden text-[#121212]">
-      {/* Superprof：淡粉 → 白，底部微弧 */}
-      <div
-        className="absolute inset-0 -z-10"
-        style={{
-          background:
-            'radial-gradient(ellipse 90% 80% at 50% -10%, #ffd6d3 0%, #ffe9e7 42%, #fff5f4 70%, #ffffff 100%)',
-        }}
-      />
+    <>
+      {/* Header 必須在 overflow-hidden 外，sticky 才不會被捲走 */}
+      {children}
 
-      <div className="relative">
-        {children}
+      <section className="relative overflow-hidden text-[#121212]">
+        {/* Superprof：淡粉 → 白，底部微弧 */}
+        <div
+          className="absolute inset-0 -z-10"
+          style={{
+            background:
+              'radial-gradient(ellipse 90% 80% at 50% -10%, #ffd6d3 0%, #ffe9e7 42%, #fff5f4 70%, #ffffff 100%)',
+          }}
+        />
 
-        <div className="max-w-[640px] mx-auto px-5 pt-5 sm:pt-8 pb-8 sm:pb-10 text-center">
+        <div className="relative max-w-[640px] mx-auto px-5 pt-5 sm:pt-8 pb-8 sm:pb-10 text-center">
           <h1 className="text-[32px] sm:text-[44px] font-black tracking-[-0.03em] leading-[1.15] text-[#121212]">
             找到最適合你的
             <br />
@@ -213,7 +214,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
             </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 };

@@ -134,6 +134,8 @@ export interface TutorProfileInput {
   lineId: string;
   phone: string;
   email?: string;
+  /** 自訂頭像公開 URL；空則沿用既有或預設頭像 */
+  avatarUrl?: string;
 }
 
 function parseFreeLessonMinutes(raw: unknown): FreeLessonMinutes {
@@ -245,8 +247,6 @@ export async function upsertTutorProfile(
     ? `${input.city.trim()}${input.district.trim()}`
     : input.city.trim();
 
-  const avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(input.name.trim())}&backgroundColor=f9a8d4`;
-
   const teachingModes = normalizeTeachingModes(
     input.teachingModes,
     input.mode || 'hybrid'
@@ -255,33 +255,39 @@ export async function upsertTutorProfile(
   const responseTime =
     (input.responseTime && input.responseTime.trim()) || DEFAULT_RESPONSE_TIME;
   const freeLessonMinutes = input.freeLessonMinutes ?? 60;
-
-  const sharedFields = {
-    name: input.name.trim(),
-    headline: input.headline.trim().slice(0, 50),
-    bio: input.bio.trim(),
-    degree: input.degree.trim() || null,
-    specialty_tags: input.specialtyTags,
-    subject_category: input.subjectCategory,
-    city: input.city.trim(),
-    district: input.district.trim() || null,
-    display_location: displayLocation,
-    mode,
-    teaching_modes: teachingModes,
-    hourly_rate: input.hourlyRate,
-    first_lesson_free: input.firstLessonFree,
-    free_lesson_minutes: freeLessonMinutes,
-    response_time: responseTime,
-    response_speed_minutes: responseTimeToMinutes(responseTime),
-    line_id: input.lineId.trim() || null,
-    phone: input.phone.trim() || null,
-    email: input.email?.trim() || null,
-    avatar_url: avatarUrl,
-    is_published: true,
-  };
+  const dicebear = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(input.name.trim())}&backgroundColor=f9a8d4`;
 
   try {
     const existing = await getTutorProfileByUserId(userId);
+    // avatarUrl 有傳入：用新值（空字串＝改回預設頭像）；未傳入：保留既有
+    const avatarUrl =
+      input.avatarUrl !== undefined
+        ? input.avatarUrl.trim() || dicebear
+        : existing?.avatarUrl || dicebear;
+
+    const sharedFields = {
+      name: input.name.trim(),
+      headline: input.headline.trim().slice(0, 50),
+      bio: input.bio.trim(),
+      degree: input.degree.trim() || null,
+      specialty_tags: input.specialtyTags,
+      subject_category: input.subjectCategory,
+      city: input.city.trim(),
+      district: input.district.trim() || null,
+      display_location: displayLocation,
+      mode,
+      teaching_modes: teachingModes,
+      hourly_rate: input.hourlyRate,
+      first_lesson_free: input.firstLessonFree,
+      free_lesson_minutes: freeLessonMinutes,
+      response_time: responseTime,
+      response_speed_minutes: responseTimeToMinutes(responseTime),
+      line_id: input.lineId.trim() || null,
+      phone: input.phone.trim() || null,
+      email: input.email?.trim() || null,
+      avatar_url: avatarUrl,
+      is_published: true,
+    };
 
     if (existing) {
       const { error } = await supabase

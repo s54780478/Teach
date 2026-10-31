@@ -4,7 +4,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import {
+  AUTH_SOCIAL_METHODS,
   type AuthMethodId,
+  type OAuthProviderId,
   isValidEmailFormat,
   sanitizeEmailInput,
   startOAuth,
@@ -20,18 +22,21 @@ interface AuthModalProps {
   intentHint?: string | null;
 }
 
-type BusyId = 'google' | 'apple' | 'email' | null;
+type BusyId = AuthMethodId | null;
 
-/** 畫面僅呈現 Superprof 同等權重的登入路徑（Email / Google / Apple） */
-const PRIMARY_SOCIAL: { id: 'google' | 'apple'; label: string }[] = [
-  { id: 'google', label: '使用 Google 登入' },
-  { id: 'apple', label: '使用 Apple 登入' },
-];
+/** 主路徑：台灣常用 + Superprof 同等（Google／Apple／LINE／Facebook） */
+const PRIMARY_SOCIAL = AUTH_SOCIAL_METHODS.filter((m) =>
+  ['google', 'apple', 'line', 'facebook'].includes(m.id)
+);
+
+/** 次要：開發者／社群 */
+const MORE_SOCIAL = AUTH_SOCIAL_METHODS.filter((m) =>
+  ['github', 'discord'].includes(m.id)
+);
 
 function IdaltuMark({ className = 'w-14 h-14' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" aria-hidden>
-      {/* Superprof 式六角標：珊瑚紅底 + 黑色字標 */}
       <path
         fill="#FF5A5F"
         d="M32 3.2L55.8 16.8v30.4L32 60.8 8.2 47.2V16.8L32 3.2Z"
@@ -43,8 +48,8 @@ function IdaltuMark({ className = 'w-14 h-14' }: { className?: string }) {
 }
 
 /**
- * Superprof 登入美學對齊：
- * 全黑底、六角標、大標、軟圓角輸入／按鈕、圖示置左、底部註冊
+ * Superprof 登入：半透明遮罩可見後方頁面 + 置中深色卡片
+ * Email 優先，下方多元社群登入
  */
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
@@ -58,6 +63,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const [busyId, setBusyId] = useState<BusyId>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const debounceRef = useRef(false);
@@ -72,12 +78,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setErrorMsg(null);
       setShowPassword(false);
       setPassword('');
+      setShowMore(false);
       document.body.style.overflow = '';
     }
     return () => {
       document.body.style.overflow = '';
     };
   }, [isOpen, defaultMode]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busyId) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, busyId, onClose]);
 
   if (!isOpen) return null;
 
@@ -96,10 +112,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setBusyId(null);
   };
 
-  const handleOAuth = async (methodId: 'google' | 'apple') => {
+  const handleOAuth = async (methodId: AuthMethodId) => {
+    const method = AUTH_SOCIAL_METHODS.find((m) => m.id === methodId);
+    if (!method?.provider) return;
     if (!beginBusy(methodId)) return;
     try {
-      const result = await startOAuth(methodId);
+      const result = await startOAuth(method.provider as OAuthProviderId);
       if (result.cancelled) {
         showAppToast('已取消登入', 'info');
         endBusy();
@@ -198,14 +216,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setPassword('');
   };
 
+  const socialButtons = (methods: typeof PRIMARY_SOCIAL) =>
+    methods.map((method) => {
+      const isThisBusy = busyId === method.id;
+      const locked = anyBusy && !isThisBusy;
+
+      return (
+        <button
+          key={method.id}
+          type="button"
+          disabled={anyBusy}
+          aria-label={method.label}
+          aria-busy={isThisBusy}
+          onClick={() => void handleOAuth(method.id)}
+          className={`relative w-full h-[52px] rounded-[14px] bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white text-[15px] font-medium transition disabled:pointer-events-none ${
+            locked ? 'opacity-40' : ''
+          }`}
+        >
+          <span className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center">
+            {isThisBusy ? (
+              <Loader2 className="w-5 h-5 animate-spin text-[#FF5A5F]" />
+            ) : (
+              <ProviderBrandIcon id={method.id} className="w-[22px] h-[22px]" />
+            )}
+          </span>
+          <span className="block w-full text-center px-12">{method.label}</span>
+        </button>
+      );
+    });
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-[#141414] text-white overflow-y-auto overscroll-contain"
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
     >
-      <div className="min-h-full w-full max-w-[392px] mx-auto px-7 pt-2 pb-12">
+      {/* Superprof 式：半透明遮罩，後方頁面仍可見（非全黑蓋版） */}
+      <button
+        type="button"
+        aria-label="關閉登入視窗"
+        disabled={anyBusy}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/55 backdrop-blur-[3px] cursor-pointer disabled:cursor-default"
+      />
+
+      <div className="relative z-10 w-full sm:max-w-[400px] max-h-[92vh] overflow-y-auto overscroll-contain rounded-t-[24px] sm:rounded-[24px] bg-[#1c1c1e] text-white shadow-[0_24px_80px_rgba(0,0,0,0.55)] px-7 pt-2 pb-10">
         <button
           type="button"
           onClick={onClose}
@@ -216,11 +272,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <X className="w-[22px] h-[22px]" strokeWidth={1.6} />
         </button>
 
-        <div className="flex flex-col items-center mt-8 mb-10">
-          <IdaltuMark className="w-[56px] h-[56px] mb-6" />
+        <div className="flex flex-col items-center mt-4 mb-8">
+          <IdaltuMark className="w-[56px] h-[56px] mb-5" />
           <h2
             id="auth-modal-title"
-            className="text-[34px] font-bold tracking-[-0.03em] text-white leading-none"
+            className="text-[32px] sm:text-[34px] font-bold tracking-[-0.03em] text-white leading-none"
           >
             {mode === 'login' ? '登入' : '註冊'}
           </h2>
@@ -275,42 +331,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </p>
         )}
 
-        <p className="text-center text-[13px] text-[#8e8e93] py-6">或者</p>
+        <p className="text-center text-[13px] text-[#8e8e93] py-5">或者</p>
 
         <div className="flex flex-col gap-3" aria-label="其他登入方式">
-          {PRIMARY_SOCIAL.map((method) => {
-            const isThisBusy = busyId === method.id;
-            const locked = anyBusy && !isThisBusy;
-
-            return (
-              <button
-                key={method.id}
-                type="button"
-                disabled={anyBusy}
-                aria-label={method.label}
-                aria-busy={isThisBusy}
-                onClick={() => void handleOAuth(method.id)}
-                className={`relative w-full h-[52px] rounded-[14px] bg-[#2c2c2e] hover:bg-[#3a3a3c] text-white text-[15px] font-medium transition disabled:pointer-events-none ${
-                  locked ? 'opacity-40' : ''
-                }`}
-              >
-                <span className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center">
-                  {isThisBusy ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-[#FF5A5F]" />
-                  ) : (
-                    <ProviderBrandIcon
-                      id={method.id as AuthMethodId}
-                      className="w-[22px] h-[22px]"
-                    />
-                  )}
-                </span>
-                <span className="block w-full text-center px-12">{method.label}</span>
-              </button>
-            );
-          })}
+          {socialButtons(PRIMARY_SOCIAL)}
+          {showMore && socialButtons(MORE_SOCIAL)}
         </div>
 
-        <div className="mt-12 text-center">
+        {!showMore && (
+          <button
+            type="button"
+            disabled={anyBusy}
+            onClick={() => setShowMore(true)}
+            className="mt-3 w-full text-center text-[13px] text-[#8e8e93] hover:text-white transition py-2 disabled:opacity-40"
+          >
+            更多登入方式
+          </button>
+        )}
+
+        <div className="mt-10 text-center">
           {mode === 'login' ? (
             <>
               <p className="text-[15px] text-[#8e8e93] leading-none mb-3">還沒有帳戶？</p>

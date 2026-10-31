@@ -10,6 +10,7 @@ import {
 } from '@/lib/tutorService';
 import type { FreeLessonMinutes, TeachingModeOption } from '@/types/tutor';
 import { AuthModal } from '@/components/AuthModal';
+import { AvatarPhotoField } from '@/components/AvatarPhotoField';
 import {
   TEACHING_MODE_OPTIONS,
   FREE_LESSON_MINUTES,
@@ -79,6 +80,7 @@ const TW_SUBJECT_TAGS = [
 
 interface FormState {
   name: string;
+  avatarUrl: string;
   headline: string;
   subjectCategory: string;
   specialtyTags: string[];
@@ -96,6 +98,7 @@ interface FormState {
 
 const INITIAL_FORM: FormState = {
   name: '',
+  avatarUrl: '',
   headline: '',
   subjectCategory: '數理升學',
   specialtyTags: [],
@@ -148,6 +151,9 @@ export default function TutorApplyPage() {
       setIsEditMode(true);
       setForm({
         name: existing.name,
+        avatarUrl: existing.avatarUrl?.includes('api.dicebear.com')
+          ? ''
+          : existing.avatarUrl || '',
         headline: existing.headline.slice(0, 50),
         subjectCategory: existing.subjectCategory || '數理升學',
         specialtyTags: existing.specialtyTags || [],
@@ -280,6 +286,7 @@ export default function TutorApplyPage() {
 
     const result = await upsertTutorProfile(user.id, {
       name: form.name.trim(),
+      avatarUrl: form.avatarUrl.trim(),
       headline: buildHeadline().slice(0, 50),
       bio: buildBio(),
       degree: form.degree.trim(),
@@ -475,6 +482,16 @@ export default function TutorApplyPage() {
                   步驟 1 · 你是誰、教什麼
                 </h2>
               </div>
+
+              {user && (
+                <AvatarPhotoField
+                  userId={user.id}
+                  nameForFallback={form.name}
+                  value={form.avatarUrl}
+                  onChange={(url) => setField('avatarUrl', url)}
+                  disabled={isSubmitting}
+                />
+              )}
 
               <div>
                 <label htmlFor="name" className="block text-xs font-medium text-slate-700 mb-1.5">

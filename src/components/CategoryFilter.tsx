@@ -58,7 +58,7 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
 
   return (
     <div
-      className="border-y border-black/[0.06] bg-white/95 backdrop-blur-md sticky top-0 z-30"
+      className="border-y border-black/[0.06] bg-white/95 backdrop-blur-md sticky top-14 sm:top-16 z-30"
       role="region"
       aria-label="課程篩選"
     >

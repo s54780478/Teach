@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
-/** 別名：導師後台 → /tutor/dashboard */
+/** 舊路徑：會員中心 → /account */
 export default function DashboardAliasPage() {
-  redirect('/tutor/dashboard');
+  redirect('/account');
 }
