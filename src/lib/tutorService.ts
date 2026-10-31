@@ -15,6 +15,14 @@ import {
   tutorMatchesModeFilter,
 } from '@/lib/teachingModes';
 
+/** 僅本機開發可強制假資料；正式環境一律忽略此開關 */
+function shouldForceMockTutors(): boolean {
+  return (
+    process.env.NODE_ENV === 'development' &&
+    process.env.NEXT_PUBLIC_USE_MOCK_TUTORS === 'true'
+  );
+}
+
 /** Supabase tutors 列（與 schema + tutor_superprof_fields.sql 對齊） */
 export interface TutorDbRow {
   id: string;
@@ -427,7 +435,7 @@ export async function getTutorById(
     };
   };
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseConfigured || shouldForceMockTutors()) {
     return mockFallback();
   }
 
@@ -520,11 +528,16 @@ export async function searchTutors(
     return next;
   };
 
-  if (!isSupabaseConfigured) {
+  /** 本機 Demo：強制假導師（避免 DB 舊 seed）；正式環境永不啟用 */
+  const forceMock = shouldForceMockTutors();
+
+  if (!isSupabaseConfigured || forceMock) {
     return {
       tutors: applyClientFilters(MOCK_TUTORS),
       isFromSupabase: false,
-      error: 'Supabase 尚未設定，使用示範資料',
+      error: forceMock
+        ? '已啟用 NEXT_PUBLIC_USE_MOCK_TUTORS（僅本機示範）'
+        : 'Supabase 尚未設定，使用示範資料',
     };
   }
 
