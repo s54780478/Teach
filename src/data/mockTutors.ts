@@ -1,12 +1,10 @@
 import { Tutor } from '@/types/tutor';
 
 /**
- * Unsplash 真人肖像（faces crop）。刻意避開：
- * - 歐美臉孔卻標成日文／台灣導師
- * - 常見 AI／扁平頭像風 photo（如 1633332755192 等）
+ * 本地頭像（public/avatars）：東亞真人、偏素人／不完美拍攝，
+ * 刻意避開歐美臉、網紅精修與 AI／扁平頭像。
  */
-const avatar = (photoId: string) =>
-  `https://images.unsplash.com/${photoId}?auto=format&fit=crop&w=800&h=800&q=80&crop=faces`;
+const avatar = (n: number) => `/avatars/tutor-${n}.jpg`;
 
 export const MOCK_TUTORS: Tutor[] = [
   {
@@ -14,7 +12,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '林承翰',
     headline: '台大物理所｜高中物理與學測自然直覺解題',
     bio: '專攻高中物理、學測自然與分科測驗。把抽象公式拆成生活模型，大安面授或線上白板皆可。',
-    avatarUrl: avatar('photo-1545167622-3a6ac756afa4'),
+    avatarUrl: avatar(1),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -49,7 +47,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '陳玟妤',
     headline: 'UCL 語言學碩士｜雅思口說與商務英文',
     bio: '旅英四年、科技業外語顧問經驗。情境式口說法協助卡關學員開口，專攻雅思與商務簡報。全台線上。',
-    avatarUrl: avatar('photo-1487412720507-e7ab37603c6f'),
+    avatarUrl: avatar(2),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -84,7 +82,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '張庭瑋',
     headline: '清大資工｜React／Python 實戰與作品集',
     bio: '美商前端工程師，帶你用 Next.js 做出可上線專案並整理求職作品集。新竹可面授、全台線上。',
-    avatarUrl: avatar('photo-1492562080023-ab3db95bfbce'),
+    avatarUrl: avatar(3),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -119,7 +117,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '黃雅涵',
     headline: '師大數學教育｜國中會考數學一對一',
     bio: '七年國中數學經驗，專門陪害怕數學的孩子建立解題節奏。板橋、新莊可到府或咖啡廳面授。',
-    avatarUrl: avatar('photo-1534528741775-53994a69daeb'),
+    avatarUrl: avatar(4),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -154,7 +152,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '高睿宇',
     headline: '台大化學所｜高中化學與分科測驗',
     bio: '用結構與熱力學邏輯串起高中化學，客製進度與重點筆記。台北中正面授或線上皆可。',
-    avatarUrl: avatar('photo-1615109398623-88346a601842'),
+    avatarUrl: avatar(5),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -189,7 +187,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '王詩涵',
     headline: '政大日文系｜JLPT 與生活日文會話',
     bio: '台日雙語背景，擅長 JLPT N2–N1 與職場／旅遊會話。針對台灣學生常錯的助詞與漢字用法加強。台中面授、全台線上。',
-    avatarUrl: avatar('photo-1531746020798-e6953c6e8e04'),
+    avatarUrl: avatar(6),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -224,7 +222,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '吳采潔',
     headline: '北藝大鋼琴｜流行伴奏與古典基礎',
     bio: '鋼琴視奏、流行伴奏與古典基本功。松山工作室面授為主，適合零基礎到檢定、想自彈自唱的國高中與成人。',
-    avatarUrl: avatar('photo-1580489944761-15a19d654956'),
+    avatarUrl: avatar(7),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -259,7 +257,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '沈佑庭',
     headline: '政大企管所｜學測英文作文與閱測',
     bio: '學測英文閱測與作文結構訓練，晚間線上方便高中生。文山可面授。',
-    avatarUrl: avatar('photo-1522556189639-b1503029b25d'),
+    avatarUrl: avatar(8),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -295,7 +293,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '許庭安',
     headline: '台師大國文系｜學測國文與作文架構',
     bio: '帶學測國文閱讀與作文取材架構，擅長短時間建立論點與例證庫。公館、古亭可面授。',
-    avatarUrl: avatar('photo-1488426862026-3ee34a7d66df'),
+    avatarUrl: avatar(9),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -330,7 +328,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '周柏宇',
     headline: '成大電機｜高中數學與學測數A／數B',
     bio: '清楚拆解觀念題與運算流程，適合想從模考中段往上衝的學生。台南可面授，外縣市線上。',
-    avatarUrl: avatar('photo-1542909168-82c3e7fdca5c'),
+    avatarUrl: avatar(10),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -365,7 +363,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '林予安',
     headline: '北教大音樂｜流行歌唱與發聲練習',
     bio: '流行唱腔、氣息與麥克風練習，適合想上節目或單純愛唱歌的學員。士林工作室面授為主。',
-    avatarUrl: avatar('photo-1524504388940-b1c1722653e1'),
+    avatarUrl: avatar(11),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -400,7 +398,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '鄭凱傑',
     headline: '台大資管｜多益／商用英文與面試英文',
     bio: '多益與外商面試英文，著重商務情境與簡報表達。內湖、南港可面授，亦可線上。',
-    avatarUrl: avatar('photo-1599566150163-29194dcaad36'),
+    avatarUrl: avatar(12),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -435,7 +433,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '蔡昕妤',
     headline: '北藝大美術｜素描、插畫與作品集輔導',
     bio: '素描基礎、數位插畫與升學作品集整理。台中西屯工作室面授，作品討論也可線上。',
-    avatarUrl: avatar('photo-1529626455594-4ff0802cfb7e'),
+    avatarUrl: avatar(13),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -470,7 +468,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '何俊緯',
     headline: '成大外文｜韓文會話與 TOPIK',
     bio: '韓語聽說與 TOPIK II 讀解寫作，適合想留學或追戲劇練聽力的學員。高雄可面授、全台線上。',
-    avatarUrl: avatar('photo-1539571696357-5a69c17a67c6'),
+    avatarUrl: avatar(14),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -505,7 +503,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '楊子萱',
     headline: '師大英語｜國中會考英文與會話',
     bio: '會考英文閱讀聽力與口說練習，節奏清楚、作業精簡。桃園中壢可面授或線上。',
-    avatarUrl: avatar('photo-1517841905240-472988babdf9'),
+    avatarUrl: avatar(15),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -540,7 +538,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '羅威廷',
     headline: '北市大音樂｜吉他與烏克麗麗入門',
     bio: '木吉他、烏克麗麗與自彈自唱入門，曲目從流行到民謠。三重、蘆洲可到府或咖啡廳。',
-    avatarUrl: avatar('photo-1568602471122-7832951cc4c5'),
+    avatarUrl: avatar(16),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -575,7 +573,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '江品妍',
     headline: '台大社會｜小論文與自主學習指導',
     bio: '高中小論文架構、資料蒐集與口試練習；也陪自主學習歷程檔案。公館可面授、全台線上。',
-    avatarUrl: avatar('photo-1438761681033-6461ffad8d80'),
+    avatarUrl: avatar(17),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,
@@ -610,7 +608,7 @@ export const MOCK_TUTORS: Tutor[] = [
     name: '陳冠宇',
     headline: '政大政治｜學測社會與公民素養',
     bio: '學測社會科時事整合與公民論述，著重抓題幹與寫短論。新竹竹北可面授或線上。',
-    avatarUrl: avatar('photo-1463453091185-61582044d556'),
+    avatarUrl: avatar(18),
     verification: {
       isIdentityVerified: true,
       isDiplomaVerified: true,

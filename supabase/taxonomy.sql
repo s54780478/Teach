@@ -27,8 +27,10 @@ create table if not exists public.tags (
   subcategory_id text references public.subcategories(id) on delete set null,
   name text not null,
   status text not null default 'pending'
-    check (status in ('pending', 'approved')),
+    check (status in ('pending', 'approved', 'disabled')),
   usage_count integer not null default 1,
+  report_count integer not null default 0,
+  display_name text,
   created_by_user_id uuid,
   created_at timestamptz default timezone('utc'::text, now()) not null,
   constraint tags_name_unique unique (name)

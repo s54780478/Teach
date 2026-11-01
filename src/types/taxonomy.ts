@@ -1,6 +1,6 @@
 /** 三層技能／科目分類 */
 
-export type TaxonomyTagStatus = 'pending' | 'approved';
+export type TaxonomyTagStatus = 'pending' | 'approved' | 'disabled';
 
 export interface TaxonomyCategory {
   id: string;
@@ -23,9 +23,13 @@ export interface TaxonomyTag {
   id: string;
   categoryId: string | null;
   subcategoryId: string | null;
+  /** 正規化鍵（小寫） */
   name: string;
+  /** 顯示名稱 */
+  displayName?: string;
   status: TaxonomyTagStatus;
   usageCount: number;
+  reportCount?: number;
 }
 
 export interface TaxonomyTree extends TaxonomyCategory {

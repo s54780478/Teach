@@ -1,41 +1,80 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
-import type { TaxonomyTree, TutorTaxonomySelection } from '@/types/taxonomy';
+import type { TaxonomyTag, TaxonomyTree, TutorTaxonomySelection } from '@/types/taxonomy';
 import { getTaxonomyTree } from '@/data/taxonomySeed';
+import { validateTagForCreateClient } from '@/lib/tagBlocklistClient';
+import { MAX_TAGS_PER_TUTOR, normalizeTagInput } from '@/lib/tagNormalize';
+import { fetchPublicMenuTags } from '@/lib/taxonomyService';
 
 interface TaxonomyPickerProps {
   value: TutorTaxonomySelection;
   onChange: (next: TutorTaxonomySelection) => void;
   tree?: TaxonomyTree[];
   error?: string;
-  /** 最多標籤數 */
+  /** 最多標籤數（預設 5） */
   maxTags?: number;
 }
 
 /**
- * 三層選單：大類 → 子類 → 建議標籤 + 自訂新增
+ * 三層選單：大類 → 子類 → 建議／公共標籤 + 自訂新增（正規化／黑名單／上限）
  */
 export function TaxonomyPicker({
   value,
   onChange,
   tree,
   error,
-  maxTags = 8,
+  maxTags = MAX_TAGS_PER_TUTOR,
 }: TaxonomyPickerProps) {
   const taxonomy = tree && tree.length > 0 ? tree : getTaxonomyTree();
   const [customInput, setCustomInput] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [publicTags, setPublicTags] = useState<TaxonomyTag[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchPublicMenuTags(30).then((tags) => {
+      if (!cancelled) setPublicTags(tags);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const category = taxonomy.find((c) => c.id === value.categoryId) || taxonomy[0];
   const subcategories = category?.subcategories || [];
   const subcategory =
     subcategories.find((s) => s.id === value.subcategoryId) || subcategories[0];
 
+  const selectedKeys = useMemo(() => {
+    return new Set(
+      value.tags.map((t) => normalizeTagInput(t).name).filter(Boolean)
+    );
+  }, [value.tags]);
+
   const suggested = useMemo(() => {
-    const base = subcategory?.suggestedTags || [];
-    return base.filter((t) => !value.tags.includes(t));
-  }, [subcategory, value.tags]);
+    const base = [
+      ...(subcategory?.suggestedTags || []),
+      ...publicTags
+        .filter(
+          (t) =>
+            !t.categoryId ||
+            t.categoryId === value.categoryId ||
+            t.subcategoryId === value.subcategoryId
+        )
+        .map((t) => t.displayName || t.name),
+    ];
+    const uniq: string[] = [];
+    const seen = new Set<string>();
+    for (const tag of base) {
+      const key = normalizeTagInput(tag).name;
+      if (!key || seen.has(key) || selectedKeys.has(key)) continue;
+      seen.add(key);
+      uniq.push(tag);
+    }
+    return uniq.slice(0, 16);
+  }, [subcategory, publicTags, value.categoryId, value.subcategoryId, selectedKeys]);
 
   const setCategory = (categoryId: string) => {
     const cat = taxonomy.find((c) => c.id === categoryId);
@@ -52,25 +91,48 @@ export function TaxonomyPicker({
   };
 
   const toggleTag = (tag: string) => {
-    if (value.tags.includes(tag)) {
-      onChange({ ...value, tags: value.tags.filter((t) => t !== tag) });
+    setLocalError(null);
+    const key = normalizeTagInput(tag).name;
+    const existing = value.tags.find((t) => normalizeTagInput(t).name === key);
+    if (existing) {
+      onChange({
+        ...value,
+        tags: value.tags.filter((t) => normalizeTagInput(t).name !== key),
+      });
       return;
     }
-    if (value.tags.length >= maxTags) return;
-    onChange({ ...value, tags: [...value.tags, tag] });
+    if (value.tags.length >= maxTags) {
+      setLocalError(`每位老師最多 ${maxTags} 個標籤`);
+      return;
+    }
+    const validated = validateTagForCreateClient(tag);
+    if (!validated.ok) {
+      setLocalError(validated.message || '標籤無效');
+      return;
+    }
+    onChange({ ...value, tags: [...value.tags, validated.displayName] });
   };
 
   const addCustom = () => {
-    const name = customInput.trim().replace(/\s+/g, ' ');
-    if (!name) return;
-    if (value.tags.includes(name)) {
+    setLocalError(null);
+    const validated = validateTagForCreateClient(customInput);
+    if (!validated.ok) {
+      setLocalError(validated.message || '標籤無效');
+      return;
+    }
+    if (selectedKeys.has(validated.name)) {
       setCustomInput('');
       return;
     }
-    if (value.tags.length >= maxTags) return;
-    onChange({ ...value, tags: [...value.tags, name] });
+    if (value.tags.length >= maxTags) {
+      setLocalError(`每位老師最多 ${maxTags} 個標籤`);
+      return;
+    }
+    onChange({ ...value, tags: [...value.tags, validated.displayName] });
     setCustomInput('');
   };
+
+  const showError = localError || error;
 
   return (
     <div className="space-y-4" role="group" aria-label="技能與科目分類">
@@ -124,7 +186,7 @@ export function TaxonomyPicker({
         <p className="block text-xs font-medium text-slate-700 mb-1.5">
           專長標籤 <span className="text-brand-500">*</span>
           <span className="text-slate-400 font-normal ml-1">
-            （最多 {maxTags} 個，找不到可自訂）
+            （最多 {maxTags} 個・2–20 字・自訂標籤僅顯示於個人頁至達熱門門檻）
           </span>
         </p>
         {suggested.length > 0 && (
@@ -153,7 +215,7 @@ export function TaxonomyPicker({
                 addCustom();
               }
             }}
-            placeholder="例如：JLPT N1 衝刺、Minecraft 程式"
+            placeholder="自訂標籤（多國語言字母／數字）"
             className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-400"
             aria-label="自訂新增標籤"
             maxLength={40}
@@ -188,7 +250,7 @@ export function TaxonomyPicker({
             ))}
           </div>
         )}
-        {error && <p className="text-xs text-rose-500 mt-1">{error}</p>}
+        {showError && <p className="text-xs text-rose-500 mt-1">{showError}</p>}
       </div>
     </div>
   );

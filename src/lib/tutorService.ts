@@ -14,15 +14,6 @@ import {
   responseTimeToMinutes,
   tutorMatchesModeFilter,
 } from '@/lib/teachingModes';
-import { syncTutorTaxonomy } from '@/lib/taxonomyService';
-
-/** 僅本機開發可強制假資料；正式環境一律忽略此開關 */
-function shouldForceMockTutors(): boolean {
-  return (
-    process.env.NODE_ENV === 'development' &&
-    process.env.NEXT_PUBLIC_USE_MOCK_TUTORS === 'true'
-  );
-}
 
 /** 冷啟動示範導師 id（tutor-1…），與真實註冊 UUID 分開 */
 function isDemoTutorId(id: string): boolean {
@@ -394,19 +385,24 @@ export async function upsertTutorProfile(
       console.warn('⚠️ courses 同步提示:', courseSync.error);
     }
 
-    // 第三層動態標籤池＋tutor_tags（taxonomy 表尚未建立時不阻斷）
+    // 第三層動態標籤池（動態 import，避免 Client 拉進 bad-words）
     if (input.categoryId) {
-      const tagSync = await syncTutorTaxonomy(
-        userId,
-        {
-          categoryId: input.categoryId,
-          subcategoryId: input.subcategoryId || '',
-          tags: input.specialtyTags,
-        },
-        userId
-      );
-      if (tagSync.error) {
-        console.warn('⚠️ taxonomy 同步提示:', tagSync.error);
+      try {
+        const { syncTutorTaxonomy } = await import('@/lib/taxonomyService');
+        const tagSync = await syncTutorTaxonomy(
+          userId,
+          {
+            categoryId: input.categoryId,
+            subcategoryId: input.subcategoryId || '',
+            tags: input.specialtyTags,
+          },
+          userId
+        );
+        if (tagSync.error) {
+          console.warn('⚠️ taxonomy 同步提示:', tagSync.error);
+        }
+      } catch (err) {
+        console.warn('⚠️ taxonomy 同步略過:', err);
       }
     }
 
@@ -494,7 +490,8 @@ export async function getTutorById(
     return mockFallback();
   }
 
-  if (!isSupabaseConfigured || shouldForceMockTutors()) {
+  // 真實刊登（UUID）一律讀 DB；勿因 USE_MOCK 而找不到自己
+  if (!isSupabaseConfigured) {
     return mockFallback();
   }
 
@@ -587,16 +584,16 @@ export async function searchTutors(
     return next;
   };
 
-  /** 本機 Demo：強制假導師（避免 DB 舊 seed）；正式環境永不啟用 */
-  const forceMock = shouldForceMockTutors();
-
-  if (!isSupabaseConfigured || forceMock) {
+  /**
+   * 無 Supabase：純假資料。
+   * 有 Supabase：一律讀 DB，再合併示範導師（新照片／人數）；
+   * 真實刊登（UUID）永遠保留，不會被 USE_MOCK 蓋掉。
+   */
+  if (!isSupabaseConfigured) {
     return {
       tutors: applyClientFilters(MOCK_TUTORS),
       isFromSupabase: false,
-      error: forceMock
-        ? '已啟用 NEXT_PUBLIC_USE_MOCK_TUTORS（僅本機示範）'
-        : 'Supabase 尚未設定，使用示範資料',
+      error: 'Supabase 尚未設定，使用示範資料',
     };
   }
 
@@ -616,7 +613,18 @@ export async function searchTutors(
     else if (sortBy === 'price-desc') query = query.order('hourly_rate', { ascending: false });
     else query = query.order('rating', { ascending: false });
 
-    const { data, error } = await query;
+    // 避免本機網路／RLS 卡住導致首頁永遠 loading
+    const queryOrTimeout = Promise.race([
+      query,
+      new Promise<{ data: null; error: { message: string } }>((resolve) =>
+        setTimeout(
+          () => resolve({ data: null, error: { message: 'Supabase 查詢逾時' } }),
+          8000
+        )
+      ),
+    ]);
+
+    const { data, error } = await queryOrTimeout;
 
     if (error) {
       console.warn('⚠️ Supabase searchTutors 提示:', error.message);
@@ -628,7 +636,7 @@ export async function searchTutors(
     }
 
     const mapped = (data || []).map((row) => mapDbRowToTutor(row as TutorDbRow));
-    // 正式站也合併示範導師，冷啟動看起來人很多；真實註冊導師一併保留
+    // 示範導師（tutor-*）用程式名單蓋掉舊 seed；真實註冊導師一併保留
     const merged = mergeDemoCatalog(mapped);
     return { tutors: applyClientFilters(merged), isFromSupabase: true };
   } catch (err: unknown) {
