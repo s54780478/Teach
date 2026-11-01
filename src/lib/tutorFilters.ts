@@ -5,22 +5,31 @@ import {
   modesFromLegacyMode,
 } from '@/lib/teachingModes';
 import { resolveCategoryId, tutorBelongsToCategory } from '@/data/taxonomySeed';
+import { resolveMainCategory } from '@/data/mainCategories';
+import type { MainCategoryKey } from '@/types/mainCategory';
 
-/** 科目／關鍵字是否命中導師公開欄位 */
+/** 科目／關鍵字：優先比對 tags，其次標題／姓名 */
 export function tutorMatchesKeyword(tutor: Tutor, keyword: string): boolean {
   const q = keyword.trim().toLowerCase();
   if (!q) return true;
-  const blob = [
-    tutor.name,
-    tutor.headline,
-    tutor.bio,
-    tutor.subjectCategory,
-    tutor.verification.degree,
-    ...tutor.specialtyTags,
-  ]
+  if (tutor.specialtyTags.some((t) => t.toLowerCase().includes(q))) return true;
+  const blob = [tutor.name, tutor.headline, tutor.bio, tutor.subjectCategory, tutor.verification.degree]
     .join(' ')
     .toLowerCase();
   return blob.includes(q);
+}
+
+export function tutorMatchesMainCategory(
+  tutor: Tutor,
+  mainCategory: MainCategoryKey | 'all' | string
+): boolean {
+  if (!mainCategory || mainCategory === 'all') return true;
+  const resolved = resolveMainCategory({
+    mainCategory: tutor.mainCategory,
+    categoryId: tutor.categoryId,
+    subjectCategory: tutor.subjectCategory,
+  });
+  return resolved === mainCategory;
 }
 
 /** Superprof 式回覆時間文案 */
@@ -70,10 +79,16 @@ export function collectAvailableSubjectQueries(
   return available;
 }
 
-/** 目錄中實際存在的大類 id（taxonomy 第一層） */
+/** 目錄中實際存在的一級分類 key */
 export function collectAvailableCategories(tutors: Tutor[]): Set<string> {
   return new Set(
-    tutors.map((t) => t.categoryId || resolveCategoryId(t.subjectCategory)).filter(Boolean)
+    tutors.map((t) =>
+      resolveMainCategory({
+        mainCategory: t.mainCategory,
+        categoryId: t.categoryId,
+        subjectCategory: t.subjectCategory,
+      })
+    )
   );
 }
 
@@ -111,6 +126,7 @@ export function filterTutorsByRegionSubject(
       const matchDegree = tutor.verification.degree.toLowerCase().includes(subject);
       const matchCatId =
         tutor.categoryId === subject ||
+        tutor.mainCategory === subject ||
         resolveCategoryId(tutor.subjectCategory) === subject;
       if (
         !matchName &&

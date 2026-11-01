@@ -21,31 +21,11 @@ import { SearchBreadcrumb } from '@/components/SearchBreadcrumb';
 import { SiteFooter } from '@/components/SiteFooter';
 import { useStudentPass } from '@/hooks/useStudentPass';
 import { supabase } from '@/lib/supabaseClient';
-import {
-  collectAvailableCategories,
-  collectAvailableSubjectQueries,
-  tutorBelongsToCategory,
-} from '@/lib/tutorFilters';
-import { SUBJECT_QUICK_FILTERS } from '@/data/filterOptions';
+import { tutorMatchesMainCategory } from '@/lib/tutorFilters';
+import { isMainCategoryKey, type MainCategoryKey } from '@/types/mainCategory';
 import { authIntentForTutor } from '@/lib/contactFlowCopy';
 import { HOME_RESET_EVENT } from '@/components/LogoHomeLink';
 import { RefreshCw, AlertCircle } from 'lucide-react';
-
-const SUBJECT_QUERY_IDS = SUBJECT_QUICK_FILTERS.filter((s) => s.id !== 'all').map(
-  (s) => s.id
-);
-const HERO_SUBJECT_QUERIES = [
-  '英文',
-  '國文',
-  '數學',
-  '日文',
-  '理化',
-  '程式',
-  '鋼琴',
-  '唱歌',
-  '運動',
-  '雅思',
-] as const;
 
 const ONLINE_LOCATION = '線上';
 
@@ -57,12 +37,11 @@ function isOnlineLocation(location: string): boolean {
 export default function HomePage() {
   const [searchSubject, setSearchSubject] = useState('');
   const [searchLocation, setSearchLocation] = useState('');
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [activeCategory, setActiveCategory] = useState<MainCategoryKey | 'all'>('all');
   const [onlyFreeLesson, setOnlyFreeLesson] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedFilterValues>(DEFAULT_ADVANCED_FILTERS);
 
   const [tutors, setTutors] = useState<Tutor[]>([]);
-  const [catalogTutors, setCatalogTutors] = useState<Tutor[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFromSupabase, setIsFromSupabase] = useState<boolean>(false);
 
@@ -106,11 +85,17 @@ export default function HomePage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     const online = isOnlineLocation(searchLocation);
+    const mainCategory =
+      activeCategory !== 'all' && isMainCategoryKey(activeCategory)
+        ? activeCategory
+        : '';
 
     try {
       const tutorResult = await searchTutors({
         region: online ? '' : searchLocation,
         subject: searchSubject,
+        q: searchSubject,
+        mainCategory,
         mode: online ? 'online' : advanced.mode,
         sortBy: advanced.sortBy,
         onlyPublished: true,
@@ -122,7 +107,7 @@ export default function HomePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchLocation, searchSubject, advanced.mode, advanced.sortBy]);
+  }, [searchLocation, searchSubject, activeCategory, advanced.mode, advanced.sortBy]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -130,40 +115,6 @@ export default function HomePage() {
     }, 280);
     return () => window.clearTimeout(timer);
   }, [loadData]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void searchTutors({ onlyPublished: true, sortBy: 'rating' }).then((result) => {
-      if (cancelled) return;
-      setCatalogTutors(result.tutors);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const availableSubjectQueries = useMemo(() => {
-    const source = catalogTutors.length > 0 ? catalogTutors : tutors;
-    return collectAvailableSubjectQueries(source, [
-      ...SUBJECT_QUERY_IDS,
-      ...HERO_SUBJECT_QUERIES,
-    ]);
-  }, [catalogTutors, tutors]);
-
-  const availableCategories = useMemo(() => {
-    const source = catalogTutors.length > 0 ? catalogTutors : tutors;
-    return collectAvailableCategories(source);
-  }, [catalogTutors, tutors]);
-
-  useEffect(() => {
-    if (
-      activeCategory !== 'all' &&
-      availableCategories.size > 0 &&
-      !availableCategories.has(activeCategory)
-    ) {
-      setActiveCategory('all');
-    }
-  }, [activeCategory, availableCategories]);
 
   /** 聯繫／預約：未登入 → Auth；未訂閱 → Student Pass；已訂閱 → 聯絡方式 */
   const handleInitiateContact = (tutor: Tutor) => {
@@ -225,8 +176,7 @@ export default function HomePage() {
     return tutors.filter((tutor) => {
       if (
         activeCategory !== 'all' &&
-        tutor.categoryId !== activeCategory &&
-        !tutorBelongsToCategory(tutor.subjectCategory, activeCategory)
+        !tutorMatchesMainCategory(tutor, activeCategory)
       ) {
         return false;
       }
@@ -268,7 +218,11 @@ export default function HomePage() {
         setSearchSubject={setSearchSubject}
         searchLocation={searchLocation}
         setSearchLocation={setSearchLocation}
-        availableSubjectQueries={availableSubjectQueries}
+        activeMainCategory={activeCategory}
+        setActiveMainCategory={(cat) => {
+          setActiveCategory(cat);
+          setSearchSubject('');
+        }}
       >
         <Header
           variant="hero"
@@ -314,9 +268,14 @@ export default function HomePage() {
           </p>
         </div>
 
+        <div id="tutor-results" />
         <CategoryFilter
           activeCategory={activeCategory}
-          setActiveCategory={setActiveCategory}
+          setActiveCategory={(cat) =>
+            setActiveCategory(
+              cat === 'all' || isMainCategoryKey(cat) ? cat : 'all'
+            )
+          }
           searchSubject={searchSubject}
           setSearchSubject={setSearchSubject}
           onlyFreeLesson={onlyFreeLesson}
@@ -325,8 +284,6 @@ export default function HomePage() {
           setMode={(mode) => setAdvanced((prev) => ({ ...prev, mode }))}
           sortBy={advanced.sortBy}
           setSortBy={(sortBy) => setAdvanced((prev) => ({ ...prev, sortBy }))}
-          availableSubjectQueries={availableSubjectQueries}
-          availableCategories={availableCategories}
           hasActiveFilters={hasActiveFilters}
           onClearAll={resetFilters}
         />

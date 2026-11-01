@@ -6,32 +6,33 @@ import {
   BookOpen,
   MapPin,
   Languages,
-  Calculator,
-  Music2,
+  GraduationCap,
   Code2,
-  Mic2,
-  Pencil,
+  Palette,
   Dumbbell,
+  Briefcase,
+  Heart,
+  Sparkles,
   ChevronRight,
   Search,
   Monitor,
+  type LucideIcon,
 } from 'lucide-react';
 import { TW_CITIES } from '@/data/filterOptions';
+import { MAIN_CATEGORIES } from '@/data/mainCategories';
 import { buildLessonsPath } from '@/lib/seoRoutes';
+import type { MainCategoryKey } from '@/types/mainCategory';
 
-/** 永遠顯示（對齊 Superprof 首頁科目列，不因資料過濾而消失） */
-const HERO_CATEGORIES = [
-  { label: '英文', icon: Languages, query: '英文' },
-  { label: '數學', icon: Calculator, query: '數學' },
-  { label: '鋼琴', icon: Music2, query: '鋼琴' },
-  { label: '唱歌', icon: Mic2, query: '唱歌' },
-  { label: '日語', icon: Languages, query: '日文' },
-  { label: '程式', icon: Code2, query: '程式' },
-  { label: '理化', icon: Pencil, query: '理化' },
-  { label: '中文', icon: BookOpen, query: '國文' },
-  { label: '運動', icon: Dumbbell, query: '運動' },
-  { label: '雅思', icon: Languages, query: '雅思' },
-] as const;
+const ICON_MAP: Record<string, LucideIcon> = {
+  Languages,
+  GraduationCap,
+  Code2,
+  Palette,
+  Dumbbell,
+  Briefcase,
+  Heart,
+  Sparkles,
+};
 
 const ONLINE_LOCATION = '線上';
 
@@ -40,20 +41,23 @@ interface HomeHeroProps {
   setSearchSubject: (val: string) => void;
   searchLocation: string;
   setSearchLocation: (val: string) => void;
+  activeMainCategory?: MainCategoryKey | 'all';
+  setActiveMainCategory?: (val: MainCategoryKey | 'all') => void;
   onSearch?: () => void;
-  availableSubjectQueries?: Set<string> | null;
   children?: React.ReactNode;
 }
 
 /**
- * Superprof 首頁節奏（非硬抄英文字級）：
- * 置中標題 → 白膠囊搜尋 → 科目圖示列 → 下方白底列表
+ * Superprof 首頁節奏：
+ * 置中標題 → 白膠囊搜尋 → 固定 8 大一級分類
  */
 export const HomeHero: React.FC<HomeHeroProps> = ({
   searchSubject,
   setSearchSubject,
   searchLocation,
   setSearchLocation,
+  activeMainCategory = 'all',
+  setActiveMainCategory,
   onSearch,
   children,
 }) => {
@@ -68,6 +72,8 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // 關鍵字搜尋不強制分類；清空分類以免漏掉跨類結果
+    setActiveMainCategory?.('all');
     goToLessons(searchSubject, searchLocation);
   };
 
@@ -75,11 +81,9 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
 
   return (
     <>
-      {/* Header 必須在 overflow-hidden 外，sticky 才不會被捲走 */}
       {children}
 
       <section className="relative overflow-hidden text-[#121212]">
-        {/* Superprof：淡粉 → 白，底部微弧 */}
         <div
           className="absolute inset-0 -z-10"
           style={{
@@ -103,7 +107,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
                   type="text"
                   value={searchSubject}
                   onChange={(e) => setSearchSubject(e.target.value)}
-                  placeholder="試試「數學」"
+                  placeholder="試試「鋼琴」「Python」「日文會話」"
                   aria-label="想學什麼？"
                   className="w-full bg-transparent text-[15px] font-semibold text-[#1d1d1f] placeholder:text-[#86868b] focus:outline-none"
                 />
@@ -181,25 +185,31 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
             </div>
           </form>
 
-          {/* Superprof 科目圖示列：永遠顯示 */}
-          <div className="mt-5 sm:mt-6 relative">
+          {/* 固定 8 大一級分類 */}
+          <div className="mt-5 sm:mt-6 relative" role="navigation" aria-label="課程大類">
             <div className="flex items-stretch gap-0 overflow-x-auto scrollbar-none rounded-full bg-white/90 shadow-[0_4px_24px_rgba(0,0,0,0.06)] border border-black/[0.04] px-1.5 py-1.5 pr-9">
-              {HERO_CATEGORIES.map((cat) => {
-                const Icon = cat.icon;
-                const active = searchSubject === cat.query;
+              {MAIN_CATEGORIES.map((cat) => {
+                const Icon = ICON_MAP[cat.icon] || BookOpen;
+                const active = activeMainCategory === cat.key;
                 return (
                   <button
-                    key={cat.label}
+                    key={cat.key}
                     type="button"
                     onClick={() => {
-                      setSearchSubject(cat.query);
-                      goToLessons(cat.query, searchLocation || 'all');
+                      setActiveMainCategory?.(cat.key);
+                      onSearch?.();
+                      document
+                        .getElementById('tutor-results')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }}
-                    className={`flex flex-col items-center justify-center gap-1 min-w-[68px] h-[54px] px-2 rounded-2xl transition cursor-pointer ${
+                    className={`flex flex-col items-center justify-center gap-1 min-w-[72px] h-[54px] px-2 rounded-2xl transition cursor-pointer ${
                       active
                         ? 'text-[#FF6363] bg-[#fff0f0]'
                         : 'text-[#424245] hover:text-[#1d1d1f] hover:bg-black/[0.03]'
                     }`}
+                    aria-pressed={active}
+                    aria-label={cat.label}
+                    title={cat.description}
                   >
                     <Icon className="w-[20px] h-[20px]" strokeWidth={1.5} />
                     <span className="text-[11px] font-semibold leading-none whitespace-nowrap">

@@ -237,7 +237,7 @@ export async function syncTutorTaxonomy(
       specialtyTags: [],
       subjectCategory,
       categoryId: selection.categoryId,
-      subcategoryId: selection.subcategoryId,
+      subcategoryId: '',
       error: normalized.error,
     };
   }
@@ -252,7 +252,7 @@ export async function syncTutorTaxonomy(
         specialtyTags: displayTags,
         subjectCategory,
         categoryId: selection.categoryId,
-        subcategoryId: selection.subcategoryId,
+        subcategoryId: '',
         error: blocked.message,
       };
     }
@@ -263,7 +263,7 @@ export async function syncTutorTaxonomy(
       specialtyTags: displayTags,
       subjectCategory,
       categoryId: selection.categoryId,
-      subcategoryId: selection.subcategoryId,
+      subcategoryId: '',
       error: normalized.error,
     };
   }
@@ -273,7 +273,7 @@ export async function syncTutorTaxonomy(
     const res = await ensureTag({
       name: t.displayName,
       categoryId: selection.categoryId,
-      subcategoryId: selection.subcategoryId,
+      subcategoryId: null,
       userId,
     });
     if (res.error && !res.tagId) {
@@ -281,7 +281,7 @@ export async function syncTutorTaxonomy(
         specialtyTags: displayTags,
         subjectCategory,
         categoryId: selection.categoryId,
-        subcategoryId: selection.subcategoryId,
+        subcategoryId: '',
         error: res.error,
       };
     }
@@ -296,13 +296,21 @@ export async function syncTutorTaxonomy(
       );
     }
 
+    const { resolveMainCategory, mainCategoryLabel } = await import(
+      '@/data/mainCategories'
+    );
+    const mainCategory = resolveMainCategory({
+      categoryId: selection.categoryId,
+      subjectCategory,
+    });
+
     await supabase
       .from('tutors')
       .update({
-        category_id: selection.categoryId,
-        subcategory_id: selection.subcategoryId || null,
+        main_category: mainCategory,
+        category_id: mainCategory,
         specialty_tags: displayTags,
-        subject_category: subjectCategory,
+        subject_category: subjectCategory || mainCategoryLabel(mainCategory),
       })
       .eq('id', tutorId);
   } catch (err: unknown) {
@@ -311,7 +319,7 @@ export async function syncTutorTaxonomy(
       specialtyTags: displayTags,
       subjectCategory,
       categoryId: selection.categoryId,
-      subcategoryId: selection.subcategoryId,
+      subcategoryId: '',
       error: message,
     };
   }
@@ -320,7 +328,7 @@ export async function syncTutorTaxonomy(
     specialtyTags: displayTags,
     subjectCategory,
     categoryId: selection.categoryId,
-    subcategoryId: selection.subcategoryId,
+    subcategoryId: '',
     error: normalized.error,
   };
 }
@@ -369,17 +377,11 @@ export function selectionFromLegacy(params: {
   const categoryId =
     params.categoryId || resolveCategoryId(params.subjectCategory || 'academic');
 
-  let subcategoryId = params.subcategoryId || '';
-  if (!subcategoryId || !getSubcategoryById(subcategoryId)) {
-    const first = TAXONOMY_SUBCATEGORIES.find((s) => s.categoryId === categoryId);
-    subcategoryId = first?.id || 'others-uncategorized';
-  }
-
   const normalized = normalizeTagList(params.specialtyTags || [], MAX_TAGS_PER_TUTOR);
 
   return {
     categoryId,
-    subcategoryId,
+    subcategoryId: '',
     tags: normalized.tags.map((t) => t.displayName),
   };
 }

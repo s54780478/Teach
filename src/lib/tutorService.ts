@@ -1,11 +1,17 @@
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 import type {
   FreeLessonMinutes,
+  MainCategoryKey,
   TeachingMode,
   TeachingModeOption,
   Tutor,
 } from '@/types/tutor';
 import { MOCK_TUTORS } from '@/data/mockTutors';
+import {
+  mainCategoryLabel,
+  resolveMainCategory,
+} from '@/data/mainCategories';
+import { isMainCategoryKey } from '@/types/mainCategory';
 import {
   DEFAULT_RESPONSE_TIME,
   deriveLegacyMode,
@@ -14,6 +20,7 @@ import {
   responseTimeToMinutes,
   tutorMatchesModeFilter,
 } from '@/lib/teachingModes';
+import { tutorMatchesKeyword, tutorMatchesMainCategory } from '@/lib/tutorFilters';
 
 /** 冷啟動示範導師 id（tutor-1…），與真實註冊 UUID 分開 */
 function isDemoTutorId(id: string): boolean {
@@ -42,7 +49,9 @@ export interface TutorDbRow {
   degree: string | null;
   specialty_tags: string[] | null;
   subject_category: string | null;
+  main_category?: string | null;
   category_id?: string | null;
+  /** @deprecated 已遷移進 specialty_tags；讀取時忽略 */
   subcategory_id?: string | null;
   city: string | null;
   district: string | null;
@@ -104,7 +113,12 @@ export interface TutorCourse {
 
 export interface TutorSearchFilters {
   region?: string;
+  /** 關鍵字（優先比對 tags；不強制 main_category） */
   subject?: string;
+  /** 別名：與 subject 相同語意 */
+  q?: string;
+  /** 固定 8 大一級分類；有設才過濾 */
+  mainCategory?: MainCategoryKey | '';
   minRate?: number;
   maxRate?: number;
   mode?: 'all' | 'in-person' | 'online' | 'hybrid';
@@ -141,8 +155,9 @@ export interface TutorProfileInput {
   degree: string;
   specialtyTags: string[];
   subjectCategory: string;
+  /** 固定 8 大 key；缺省時由 categoryId／subjectCategory 推導 */
+  mainCategory?: MainCategoryKey;
   categoryId?: string;
-  subcategoryId?: string;
   city: string;
   district: string;
   /** 相容欄位；若有 teachingModes 則由 modes 推導 */
@@ -188,6 +203,12 @@ export function mapDbRowToTutor(row: TutorDbRow): Tutor {
     row.is_verified || identityVerified || diplomaVerified
   );
 
+  const mainCategory = resolveMainCategory({
+    mainCategory: row.main_category,
+    categoryId: row.category_id,
+    subjectCategory: row.subject_category,
+  });
+
   return {
     id: row.id,
     name: row.name,
@@ -203,9 +224,9 @@ export function mapDbRowToTutor(row: TutorDbRow): Tutor {
     },
     isVerified,
     specialtyTags: Array.isArray(row.specialty_tags) ? row.specialty_tags : [],
-    subjectCategory: row.subject_category || '未分類',
-    categoryId: row.category_id || undefined,
-    subcategoryId: row.subcategory_id || undefined,
+    mainCategory,
+    subjectCategory: row.subject_category || mainCategoryLabel(mainCategory),
+    categoryId: row.category_id || mainCategory,
     location: {
       city: row.city || '台北市',
       district: row.district || '',
@@ -288,15 +309,22 @@ export async function upsertTutorProfile(
         ? input.avatarUrl.trim() || dicebear
         : existing?.avatarUrl || dicebear;
 
+    const mainCategory = resolveMainCategory({
+      mainCategory: input.mainCategory,
+      categoryId: input.categoryId,
+      subjectCategory: input.subjectCategory,
+    });
+
     const sharedFields = {
       name: input.name.trim(),
       headline: input.headline.trim().slice(0, 50),
       bio: input.bio.trim(),
       degree: input.degree.trim() || null,
       specialty_tags: input.specialtyTags,
-      subject_category: input.subjectCategory,
-      category_id: input.categoryId || null,
-      subcategory_id: input.subcategoryId || null,
+      main_category: mainCategory,
+      subject_category:
+        input.subjectCategory.trim() || mainCategoryLabel(mainCategory),
+      category_id: input.categoryId || mainCategory,
       city: input.city.trim(),
       district: input.district.trim() || null,
       display_location: displayLocation,
@@ -323,13 +351,13 @@ export async function upsertTutorProfile(
       if (error) {
         console.error('⚠️ 更新導師履歷失敗:', error.message);
         // 若尚未執行 tutor_superprof_fields.sql，降級寫入舊欄位
-        if (/teaching_modes|free_lesson_minutes|response_time|category_id|subcategory_id/i.test(error.message)) {
+        if (/teaching_modes|free_lesson_minutes|response_time|category_id|main_category/i.test(error.message)) {
           const {
             teaching_modes: _tm,
             free_lesson_minutes: _fl,
             response_time: _rt,
             category_id: _c,
-            subcategory_id: _s,
+            main_category: _mc,
             ...legacy
           } = sharedFields;
           const retry = await supabase.from('tutors').update(legacy).eq('id', userId);
@@ -353,13 +381,13 @@ export async function upsertTutorProfile(
 
       if (error) {
         console.error('⚠️ 新增導師履歷失敗:', error.message);
-        if (/teaching_modes|free_lesson_minutes|response_time|category_id|subcategory_id/i.test(error.message)) {
+        if (/teaching_modes|free_lesson_minutes|response_time|category_id|main_category/i.test(error.message)) {
           const {
             teaching_modes: _tm,
             free_lesson_minutes: _fl,
             response_time: _rt,
             category_id: _c,
-            subcategory_id: _s,
+            main_category: _mc,
             ...legacy
           } = sharedFields;
           const retry = await supabase.from('tutors').insert([
@@ -393,7 +421,6 @@ export async function upsertTutorProfile(
           userId,
           {
             categoryId: input.categoryId,
-            subcategoryId: input.subcategoryId || '',
             tags: input.specialtyTags,
           },
           userId
@@ -536,6 +563,8 @@ export async function searchTutors(
   const {
     region = '',
     subject = '',
+    q = '',
+    mainCategory = '',
     minRate,
     maxRate,
     mode = 'all',
@@ -543,29 +572,29 @@ export async function searchTutors(
     onlyPublished = true,
   } = filters;
 
+  const keyword = (q || subject).trim();
+  const categoryFilter =
+    mainCategory && isMainCategoryKey(mainCategory) ? mainCategory : '';
+
   const applyClientFilters = (list: Tutor[]): Tutor[] => {
     let next = [...list];
     if (onlyPublished) {
       // mock 預設皆可視為上架
     }
+    // 有指定分類才限制；純關鍵字不強制 main_category
+    if (categoryFilter) {
+      next = next.filter((t) => tutorMatchesMainCategory(t, categoryFilter));
+    }
     if (region.trim()) {
-      const q = region.trim().toLowerCase();
-      const short = q.replace(/(市|縣)$/, '');
+      const rq = region.trim().toLowerCase();
+      const short = rq.replace(/(市|縣)$/, '');
       next = next.filter((t) => {
         const blob = `${t.location.city}${t.location.district}${t.location.displayLocation}`.toLowerCase();
-        return blob.includes(q) || blob.includes(short);
+        return blob.includes(rq) || blob.includes(short);
       });
     }
-    if (subject.trim()) {
-      const q = subject.trim().toLowerCase();
-      next = next.filter((t) => {
-        return (
-          t.name.toLowerCase().includes(q) ||
-          t.subjectCategory.toLowerCase().includes(q) ||
-          t.headline.toLowerCase().includes(q) ||
-          t.specialtyTags.some((tag) => tag.toLowerCase().includes(q))
-        );
-      });
+    if (keyword) {
+      next = next.filter((t) => tutorMatchesKeyword(t, keyword));
     }
     if (typeof minRate === 'number') next = next.filter((t) => t.hourlyRate >= minRate);
     if (typeof maxRate === 'number') next = next.filter((t) => t.hourlyRate <= maxRate);
@@ -598,11 +627,39 @@ export async function searchTutors(
   }
 
   try {
+    // 優先走 RPC（pg_trgm tags）；失敗再降級 select
+    if (categoryFilter || keyword) {
+      const rpcOrTimeout = Promise.race([
+        supabase.rpc('search_tutors_catalog', {
+          p_main_category: categoryFilter || null,
+          p_query: keyword || null,
+          p_only_published: onlyPublished,
+        }),
+        new Promise<{ data: null; error: { message: string } }>((resolve) =>
+          setTimeout(
+            () => resolve({ data: null, error: { message: 'Supabase RPC 逾時' } }),
+            8000
+          )
+        ),
+      ]);
+      const rpcResult = await rpcOrTimeout;
+      if (!rpcResult.error && Array.isArray(rpcResult.data)) {
+        let mapped = (rpcResult.data as TutorDbRow[]).map(mapDbRowToTutor);
+        const merged = mergeDemoCatalog(mapped);
+        // RPC 已處理分類／關鍵字；其餘篩選仍走 client
+        return {
+          tutors: applyClientFilters(merged),
+          isFromSupabase: true,
+        };
+      }
+    }
+
     let query = supabase.from('tutors').select('*');
 
     if (onlyPublished) {
       query = query.or('is_published.eq.true,is_published.is.null');
     }
+    // main_category 過濾交由 client／RPC（欄位遷移前仍相容）
     if (typeof minRate === 'number') query = query.gte('hourly_rate', minRate);
     if (typeof maxRate === 'number') query = query.lte('hourly_rate', maxRate);
     if (mode === 'in-person') query = query.in('mode', ['in-person', 'hybrid']);
@@ -716,6 +773,8 @@ export interface TutorDashboardProfileInput {
   avatarUrl: string;
   specialtyTags: string[];
   subjectCategory: string;
+  mainCategory?: MainCategoryKey;
+  categoryId?: string;
   city: string;
   district: string;
   mode?: TeachingMode;
@@ -750,13 +809,22 @@ export async function updateTutorDashboardProfile(
     const responseTime =
       (input.responseTime && input.responseTime.trim()) || DEFAULT_RESPONSE_TIME;
 
+    const mainCategory = resolveMainCategory({
+      mainCategory: input.mainCategory,
+      categoryId: input.categoryId,
+      subjectCategory: input.subjectCategory,
+    });
+
     const payload = {
       name: input.name.trim(),
       headline: input.headline.trim().slice(0, 50),
       bio: input.bio.trim(),
       avatar_url: avatarUrl,
       specialty_tags: input.specialtyTags,
-      subject_category: input.subjectCategory.trim() || null,
+      main_category: mainCategory,
+      category_id: mainCategory,
+      subject_category:
+        input.subjectCategory.trim() || mainCategoryLabel(mainCategory),
       city: input.city.trim() || null,
       district: input.district.trim() || null,
       display_location: displayLocation || null,
@@ -776,11 +844,13 @@ export async function updateTutorDashboardProfile(
     const { error } = await supabase.from('tutors').update(payload).eq('id', userId);
 
     if (error) {
-      if (/teaching_modes|free_lesson_minutes|response_time/i.test(error.message)) {
+      if (/teaching_modes|free_lesson_minutes|response_time|main_category|category_id/i.test(error.message)) {
         const {
           teaching_modes: _a,
           free_lesson_minutes: _b,
           response_time: _c,
+          main_category: _mc,
+          category_id: _cid,
           ...legacy
         } = payload;
         const retry = await supabase.from('tutors').update(legacy).eq('id', userId);

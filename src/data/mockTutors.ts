@@ -19,7 +19,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺灣大學 物理學研究所碩士',
     },
     specialtyTags: ['高中物理', '國中理化', '學測自然', '分科測驗'],
-    subjectCategory: '升學與學科',
+    mainCategory: 'academic',
+    subjectCategory: '學科升學',
     location: {
       city: '台北市',
       district: '大安區',
@@ -54,7 +55,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '倫敦大學學院 (UCL) 應用語言學碩士',
     },
     specialtyTags: ['雅思', '商務英文', '英文口說', '留學申請'],
-    subjectCategory: '語言與檢定',
+    mainCategory: 'languages',
+    subjectCategory: '語言學習',
     location: {
       city: '台北市',
       district: '信義區',
@@ -89,7 +91,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立清華大學 資訊工程學系',
     },
     specialtyTags: ['程式', 'React', 'Python', '作品集'],
-    subjectCategory: '程式與資訊科技',
+    mainCategory: 'technology',
+    subjectCategory: '科技程式',
     location: {
       city: '新竹市',
       district: '東區',
@@ -124,7 +127,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺灣師範大學 數學教育學系',
     },
     specialtyTags: ['國中數學', '會考', '國小數學', '一對一'],
-    subjectCategory: '升學與學科',
+    mainCategory: 'academic',
+    subjectCategory: '學科升學',
     location: {
       city: '新北市',
       district: '板橋區',
@@ -159,7 +163,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺灣大學 化學研究所',
     },
     specialtyTags: ['高中化學', '理化', '分科測驗', '學測自然'],
-    subjectCategory: '升學與學科',
+    mainCategory: 'academic',
+    subjectCategory: '學科升學',
     location: {
       city: '台北市',
       district: '中正區',
@@ -194,7 +199,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立政治大學 日本語文學系',
     },
     specialtyTags: ['日文', 'JLPT', '日文會話', 'N2'],
-    subjectCategory: '語言與檢定',
+    mainCategory: 'languages',
+    subjectCategory: '語言學習',
     location: {
       city: '台中市',
       district: '西區',
@@ -229,7 +235,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺北藝術大學 音樂學系（鋼琴）',
     },
     specialtyTags: ['鋼琴', '音樂', '流行伴奏', '唱歌'],
-    subjectCategory: '音樂與藝術',
+    mainCategory: 'arts_music',
+    subjectCategory: '藝術創作',
     location: {
       city: '台北市',
       district: '松山區',
@@ -264,7 +271,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立政治大學 企業管理研究所',
     },
     specialtyTags: ['學測英文', '英文作文', '高中英文', '文法'],
-    subjectCategory: '語言與檢定',
+    mainCategory: 'languages',
+    subjectCategory: '語言學習',
     location: {
       city: '台北市',
       district: '文山區',
@@ -300,7 +308,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺灣師範大學 國文學系',
     },
     specialtyTags: ['國文', '學測國文', '作文', '文言文'],
-    subjectCategory: '升學與學科',
+    mainCategory: 'academic',
+    subjectCategory: '學科升學',
     location: {
       city: '台北市',
       district: '中正區',
@@ -335,7 +344,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立成功大學 電機工程學系',
     },
     specialtyTags: ['高中數學', '學測數學', '數A', '數B'],
-    subjectCategory: '升學與學科',
+    mainCategory: 'academic',
+    subjectCategory: '學科升學',
     location: {
       city: '台南市',
       district: '東區',
@@ -370,7 +380,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺北教育大學 音樂學系',
     },
     specialtyTags: ['唱歌', '流行歌唱', '音樂', '發聲'],
-    subjectCategory: '音樂與藝術',
+    mainCategory: 'arts_music',
+    subjectCategory: '藝術創作',
     location: {
       city: '台北市',
       district: '士林區',
@@ -405,7 +416,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺灣大學 資訊管理學系',
     },
     specialtyTags: ['多益', '商務英文', '英文', '面試'],
-    subjectCategory: '語言與檢定',
+    mainCategory: 'languages',
+    subjectCategory: '語言學習',
     location: {
       city: '台北市',
       district: '內湖區',
@@ -440,7 +452,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺北藝術大學 美術學系',
     },
     specialtyTags: ['美術', '素描', '插畫', '作品集'],
-    subjectCategory: '音樂與藝術',
+    mainCategory: 'arts_music',
+    subjectCategory: '藝術創作',
     location: {
       city: '台中市',
       district: '西屯區',
@@ -475,7 +488,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立成功大學 外國語文學系',
     },
     specialtyTags: ['韓文', 'TOPIK', '韓文會話', '外語'],
-    subjectCategory: '語言與檢定',
+    mainCategory: 'languages',
+    subjectCategory: '語言學習',
     location: {
       city: '高雄市',
       district: '左營區',
@@ -510,7 +524,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺灣師範大學 英語學系',
     },
     specialtyTags: ['會考英文', '國中英文', '英文會話', '聽力'],
-    subjectCategory: '語言與檢定',
+    mainCategory: 'languages',
+    subjectCategory: '語言學習',
     location: {
       city: '桃園市',
       district: '中壢區',
@@ -545,7 +560,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '臺北市立大學 音樂學系',
     },
     specialtyTags: ['吉他', '烏克麗麗', '音樂', '自彈自唱'],
-    subjectCategory: '音樂與藝術',
+    mainCategory: 'arts_music',
+    subjectCategory: '藝術創作',
     location: {
       city: '新北市',
       district: '三重區',
@@ -580,7 +596,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立臺灣大學 社會學系',
     },
     specialtyTags: ['小論文', '自主學習', '口試', '寫作'],
-    subjectCategory: '升學與學科',
+    mainCategory: 'academic',
+    subjectCategory: '學科升學',
     location: {
       city: '台北市',
       district: '大安區',
@@ -615,7 +632,8 @@ export const MOCK_TUTORS: Tutor[] = [
       degree: '國立政治大學 政治學系',
     },
     specialtyTags: ['學測社會', '公民', '社會科', '時事'],
-    subjectCategory: '升學與學科',
+    mainCategory: 'academic',
+    subjectCategory: '學科升學',
     location: {
       city: '新竹縣',
       district: '竹北市',

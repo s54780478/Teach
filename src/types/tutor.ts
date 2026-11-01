@@ -1,3 +1,5 @@
+import type { MainCategoryKey } from '@/types/mainCategory';
+
 /** 舊版相容：單一 mode（由 teachingModes 推導） */
 export type TeachingMode = 'in-person' | 'online' | 'hybrid';
 
@@ -5,6 +7,8 @@ export type TeachingMode = 'in-person' | 'online' | 'hybrid';
 export type TeachingModeOption = 'online' | 'in_person' | 'student_home';
 
 export type FreeLessonMinutes = 30 | 45 | 60;
+
+export type { MainCategoryKey };
 
 export interface VerificationInfo {
   isIdentityVerified: boolean;
@@ -34,12 +38,15 @@ export interface Tutor {
   /** 綜合驗證標章（身分或學歷任一通過） */
   isVerified: boolean;
   specialtyTags: string[];
-  /** 顯示用大類名稱（與 taxonomy 第一層 name 對齊） */
+  /**
+   * 固定 8 大一級分類 key（languages / academic / …）
+   * 每位導師僅一個；細項靠 specialtyTags
+   */
+  mainCategory: MainCategoryKey;
+  /** 顯示用大類中文名稱 */
   subjectCategory: string;
-  /** 三層 taxonomy：大類 id（academic…） */
+  /** 與 mainCategory 對齊的 taxonomy 大類 id */
   categoryId?: string;
-  /** 三層 taxonomy：子類 id */
-  subcategoryId?: string;
   location: {
     city: string;
     district: string;

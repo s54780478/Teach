@@ -20,7 +20,7 @@ insert into public.tutors (
   '/avatars/tutor-1.jpg',
   '國立臺灣大學 物理學研究所碩士',
   array['高中物理','國中理化','學測自然','分科測驗']::text[],
-  '數理升學', '台北市', '大安區', '台北市大安區 / 可線上', 'hybrid',
+  '學科升學', '台北市', '大安區', '台北市大安區 / 可線上', 'hybrid',
   array['online','in_person','student_home']::text[],
   950, true, 60, 12, '通常在 1 小時內回覆', 180, 5.0, 46, '金牌導師',
   'lin_physics_ntu', '0912-888-321', 'chenghan.lin@idaltu.tw', true, true
@@ -56,7 +56,7 @@ insert into public.tutors (
   '/avatars/tutor-4.jpg',
   '國立臺灣師範大學 數學教育學系',
   array['國中數學','會考','國小數學','一對一']::text[],
-  '數理升學', '新北市', '板橋區', '新北市板橋區 / 面授', 'in-person',
+  '學科升學', '新北市', '板橋區', '新北市板橋區 / 面授', 'in-person',
   array['in_person','student_home']::text[],
   800, true, 60, 15, '通常在 1 小時內回覆', 320, 4.9, 52, '熱門首選',
   'yahan_math', '0955-321-765', 'yahan.huang@idaltu.tw', true, true
@@ -68,7 +68,7 @@ insert into public.tutors (
   '/avatars/tutor-5.jpg',
   '國立臺灣大學 化學研究所',
   array['高中化學','理化','分科測驗','學測自然']::text[],
-  '數理升學', '台北市', '中正區', '台北市中正區 / 線上', 'hybrid',
+  '學科升學', '台北市', '中正區', '台北市中正區 / 線上', 'hybrid',
   array['online','in_person','student_home']::text[],
   900, true, 60, 10, '通常在 1 小時內回覆', 110, 5.0, 31, '新星特選',
   'ruiyu_chem', '0978-654-321', 'ruiyu.kao@idaltu.tw', true, true
@@ -128,7 +128,7 @@ insert into public.tutors (
   '/avatars/tutor-10.jpg',
   '國立成功大學 電機工程學系',
   array['高中數學','學測數學','數A','數B']::text[],
-  '數理升學', '台南市', '東區', '台南市東區 / 線上', 'hybrid',
+  '學科升學', '台南市', '東區', '台南市東區 / 線上', 'hybrid',
   array['online','in_person','student_home']::text[],
   880, true, 60, 11, '通常在 1 小時內回覆', 200, 4.9, 41, '金牌導師',
   'boyu_math', '0936-771-002', 'boyu.chou@idaltu.tw', true, true

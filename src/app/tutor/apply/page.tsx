@@ -43,6 +43,7 @@ import { TaxonomyPicker } from '@/components/TaxonomyPicker';
 import { categoryDisplayName } from '@/data/taxonomySeed';
 import { selectionFromLegacy } from '@/lib/taxonomyService';
 import type { TutorTaxonomySelection } from '@/types/taxonomy';
+import { isMainCategoryKey } from '@/types/mainCategory';
 
 const STEPS = [
   { id: 1, title: '基本資料', icon: UserRound },
@@ -57,7 +58,6 @@ interface FormState {
   subjectCategory: string;
   specialtyTags: string[];
   categoryId: string;
-  subcategoryId: string;
   city: string;
   district: string;
   teachingModes: TeachingModeOption[];
@@ -77,7 +77,6 @@ const INITIAL_FORM: FormState = {
   subjectCategory: categoryDisplayName('academic'),
   specialtyTags: [],
   categoryId: 'academic',
-  subcategoryId: 'academic-junior-math',
   city: '',
   district: '',
   teachingModes: ['online', 'in_person', 'student_home'],
@@ -134,18 +133,12 @@ export default function TutorApplyPage() {
           existing.subjectCategory || categoryDisplayName('academic'),
         specialtyTags: existing.specialtyTags || [],
         categoryId:
+          existing.mainCategory ||
           existing.categoryId ||
           selectionFromLegacy({
             subjectCategory: existing.subjectCategory,
             specialtyTags: existing.specialtyTags,
           }).categoryId,
-        subcategoryId:
-          existing.subcategoryId ||
-          selectionFromLegacy({
-            subjectCategory: existing.subjectCategory,
-            specialtyTags: existing.specialtyTags,
-            categoryId: existing.categoryId,
-          }).subcategoryId,
         city: existing.location.city,
         district: existing.location.district,
         teachingModes:
@@ -180,7 +173,6 @@ export default function TutorApplyPage() {
     setForm((prev) => ({
       ...prev,
       categoryId: next.categoryId,
-      subcategoryId: next.subcategoryId,
       specialtyTags: next.tags,
       subjectCategory: categoryDisplayName(next.categoryId),
     }));
@@ -272,8 +264,10 @@ export default function TutorApplyPage() {
       degree: form.degree.trim(),
       specialtyTags: form.specialtyTags,
       subjectCategory: form.subjectCategory,
+      mainCategory: isMainCategoryKey(form.categoryId)
+        ? form.categoryId
+        : undefined,
       categoryId: form.categoryId,
-      subcategoryId: form.subcategoryId,
       city: form.city.trim(),
       district: form.district.trim(),
       teachingModes: form.teachingModes,
@@ -496,7 +490,6 @@ export default function TutorApplyPage() {
               <TaxonomyPicker
                 value={{
                   categoryId: form.categoryId,
-                  subcategoryId: form.subcategoryId,
                   tags: form.specialtyTags,
                 }}
                 onChange={setTaxonomy}

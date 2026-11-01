@@ -49,12 +49,14 @@ create table if not exists public.tutor_tags (
 
 create index if not exists tutor_tags_tag_idx on public.tutor_tags (tag_id);
 
--- 5. tutors 可選外鍵（不破壞既有 specialty_tags text[]）
+-- 5. tutors 大類外鍵（細項一律走 specialty_tags；勿再寫 subcategory_id）
 alter table public.tutors
   add column if not exists category_id text references public.categories(id) on delete set null;
 
 alter table public.tutors
-  add column if not exists subcategory_id text references public.subcategories(id) on delete set null;
+  add column if not exists main_category text;
+
+-- 舊欄位若仍存在，請執行 migrate_subcategory_into_tags.sql 合併後刪除
 
 -- 6. RLS
 alter table public.categories enable row level security;
@@ -118,16 +120,16 @@ create trigger tags_auto_promote
   for each row
   execute function public.promote_popular_tags();
 
--- 8. Seed 大類（與 src/data/taxonomySeed.ts 對齊）
+-- 8. Seed 大類（固定 8 大，與 src/data/mainCategories.ts 對齊）
 insert into public.categories (id, name, icon, sort_order) values
-  ('academic', '升學與學科', 'GraduationCap', 1),
-  ('languages', '語言與檢定', 'Languages', 2),
-  ('programming', '程式與資訊科技', 'Code2', 3),
-  ('arts', '音樂與藝術', 'Music', 4),
-  ('sports', '運動與健身', 'Dumbbell', 5),
-  ('professional', '職涯與專業技能', 'Briefcase', 6),
-  ('lifestyle', '生活、陪讀與興趣', 'Heart', 7),
-  ('others', '其他與創新領域', 'Sparkles', 8)
+  ('languages', '語言學習', 'Languages', 1),
+  ('academic', '學科升學', 'GraduationCap', 2),
+  ('technology', '科技程式', 'Code2', 3),
+  ('arts_music', '藝術創作', 'Palette', 4),
+  ('sports_fitness', '運動健身', 'Dumbbell', 5),
+  ('career_exams', '職涯專業', 'Briefcase', 6),
+  ('lifestyle_hobbies', '生活興趣', 'Heart', 7),
+  ('personal_development', '個人成長', 'Sparkles', 8)
 on conflict (id) do update set
   name = excluded.name,
   icon = excluded.icon,
@@ -148,34 +150,37 @@ insert into public.subcategories (id, category_id, name, sort_order) values
   ('lang-korean', 'languages', '韓文', 4),
   ('lang-chinese', 'languages', '華語／中文外師', 5),
   ('lang-other', 'languages', '其他外語', 6),
-  ('prog-web', 'programming', '網頁／前端', 1),
-  ('prog-python', 'programming', 'Python／資料科學', 2),
-  ('prog-app', 'programming', 'App／後端', 3),
-  ('prog-kids', 'programming', '兒童程式／創客', 4),
-  ('prog-ai', 'programming', 'AI／自動化', 5),
-  ('arts-piano', 'arts', '鋼琴／鍵盤', 1),
-  ('arts-guitar', 'arts', '吉他／烏克麗麗', 2),
-  ('arts-vocal', 'arts', '歌唱／聲樂', 3),
-  ('arts-visual', 'arts', '美術／插畫／設計', 4),
-  ('arts-other', 'arts', '其他樂器／表演', 5),
-  ('sports-fitness', 'sports', '健身／重訓', 1),
-  ('sports-yoga', 'sports', '瑜珈／皮拉提斯', 2),
-  ('sports-ball', 'sports', '球類', 3),
-  ('sports-martial', 'sports', '武術／自衛', 4),
-  ('sports-kids', 'sports', '兒童體能', 5),
-  ('pro-office', 'professional', '辦公軟體／Excel', 1),
-  ('pro-career', 'professional', '履歷／面試／轉職', 2),
-  ('pro-finance', 'professional', '會計／金融／投資入門', 3),
-  ('pro-marketing', 'professional', '行銷／社群／電商', 4),
-  ('pro-design-tools', 'professional', '設計工具／剪輯', 5),
-  ('life-tutoring', 'lifestyle', '陪讀／課後照顧', 1),
-  ('life-cooking', 'lifestyle', '烹飪／烘焙', 2),
-  ('life-craft', 'lifestyle', '手作／興趣', 3),
-  ('life-life-skills', 'lifestyle', '生活技能／駕駛', 4),
-  ('life-wellbeing', 'lifestyle', '心靈／諮商取向（非醫療）', 5),
-  ('others-emerging', 'others', '新興技能', 1),
-  ('others-niche', 'others', '小眾專長', 2),
-  ('others-uncategorized', 'others', '尚未歸類', 3)
+  ('prog-web', 'technology', '網頁／前端', 1),
+  ('prog-python', 'technology', 'Python／資料科學', 2),
+  ('prog-app', 'technology', 'App／後端', 3),
+  ('prog-kids', 'technology', '兒童程式／創客', 4),
+  ('prog-ai', 'technology', 'AI／自動化', 5),
+  ('arts-piano', 'arts_music', '鋼琴／鍵盤', 1),
+  ('arts-guitar', 'arts_music', '吉他／烏克麗麗', 2),
+  ('arts-vocal', 'arts_music', '歌唱／聲樂', 3),
+  ('arts-visual', 'arts_music', '美術／插畫／設計', 4),
+  ('arts-photo', 'arts_music', '攝影／影像', 5),
+  ('arts-other', 'arts_music', '其他樂器／表演', 6),
+  ('sports-fitness', 'sports_fitness', '健身／重訓', 1),
+  ('sports-yoga', 'sports_fitness', '瑜珈／皮拉提斯', 2),
+  ('sports-dance', 'sports_fitness', '舞蹈／有氧', 3),
+  ('sports-ball', 'sports_fitness', '球類', 4),
+  ('sports-martial', 'sports_fitness', '武術／自衛', 5),
+  ('sports-kids', 'sports_fitness', '兒童體能', 6),
+  ('pro-office', 'career_exams', '辦公軟體／Excel', 1),
+  ('pro-career', 'career_exams', '履歷／面試／轉職', 2),
+  ('pro-finance', 'career_exams', '會計／金融／投資入門', 3),
+  ('pro-marketing', 'career_exams', '行銷／社群／電商', 4),
+  ('pro-certs', 'career_exams', '證照／專業檢定', 5),
+  ('pro-design-tools', 'career_exams', '設計工具／剪輯', 6),
+  ('life-tutoring', 'lifestyle_hobbies', '陪讀／課後照顧', 1),
+  ('life-cooking', 'lifestyle_hobbies', '烹飪／烘焙', 2),
+  ('life-craft', 'lifestyle_hobbies', '手作／園藝／興趣', 3),
+  ('life-skills', 'lifestyle_hobbies', '生活技能／駕駛', 4),
+  ('growth-psych', 'personal_development', '心理學／情緒管理', 1),
+  ('growth-comms', 'personal_development', '溝通／人際關係', 2),
+  ('growth-habits', 'personal_development', '時間管理／自我成長', 3),
+  ('growth-niche', 'personal_development', '其他成長主題', 4)
 on conflict (id) do update set
   category_id = excluded.category_id,
   name = excluded.name,

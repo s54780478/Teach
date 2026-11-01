@@ -1,12 +1,18 @@
 'use client';
 
-import React, { useMemo } from 'react';
-import { Gift, Monitor, MapPin, X } from 'lucide-react';
-import { SUBJECT_CATEGORIES, SUBJECT_QUICK_FILTERS } from '@/data/filterOptions';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Gift, Monitor, MapPin, X, Loader2 } from 'lucide-react';
+import { SUBJECT_CATEGORIES } from '@/data/filterOptions';
 import type { AdvancedFilterValues } from '@/components/AdvancedFilterPanel';
+import type { MainCategoryKey } from '@/types/mainCategory';
+import { isMainCategoryKey } from '@/types/mainCategory';
+import {
+  fetchPopularTagsWithFallback,
+  type PopularTagItem,
+} from '@/lib/fetchPopularTags';
 
 interface CategoryFilterProps {
-  activeCategory: string;
+  activeCategory: MainCategoryKey | 'all' | string;
   setActiveCategory: (cat: string) => void;
   searchSubject: string;
   setSearchSubject: (val: string) => void;
@@ -16,8 +22,6 @@ interface CategoryFilterProps {
   setMode: (mode: AdvancedFilterValues['mode']) => void;
   sortBy: AdvancedFilterValues['sortBy'];
   setSortBy: (sort: AdvancedFilterValues['sortBy']) => void;
-  availableSubjectQueries?: Set<string> | null;
-  availableCategories?: Set<string> | null;
   onClearAll?: () => void;
   hasActiveFilters?: boolean;
 }
@@ -28,7 +32,10 @@ const MODE_CHIPS: { id: AdvancedFilterValues['mode']; label: string }[] = [
   { id: 'in-person', label: '面授' },
 ];
 
-/** Superprof 式淺色頂部篩選列 */
+/**
+ * 第一層：固定 8 大分類 + 全部
+ * 第二層：Steam 式動態熱門 tags（過少則回退全站；仍空則隱藏）
+ */
 export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   activeCategory,
   setActiveCategory,
@@ -40,25 +47,59 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   setMode,
   sortBy,
   setSortBy,
-  availableSubjectQueries = null,
-  availableCategories = null,
   onClearAll,
   hasActiveFilters = false,
 }) => {
-  const categoryChips = useMemo(() => {
-    return SUBJECT_CATEGORIES.filter(
-      (c) => c.id === 'all' || !availableCategories || availableCategories.has(c.id)
-    );
-  }, [availableCategories]);
+  const categoryChips = useMemo(() => SUBJECT_CATEGORIES, []);
+  const [popularTags, setPopularTags] = useState<PopularTagItem[]>([]);
+  const [tagsLoading, setTagsLoading] = useState(false);
+  const [tagSource, setTagSource] = useState<'category' | 'site' | 'empty'>('empty');
 
-  const subjectChips = useMemo(() => {
-    return SUBJECT_QUICK_FILTERS.filter(
-      (s) => s.id === 'all' || !availableSubjectQueries || availableSubjectQueries.has(s.id)
-    );
-  }, [availableSubjectQueries]);
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const main =
+      activeCategory !== 'all' && isMainCategoryKey(activeCategory)
+        ? activeCategory
+        : '';
 
-  const activeSubjectChip =
-    subjectChips.find((s) => s.id !== 'all' && searchSubject.trim() === s.id)?.id || 'all';
+    setTagsLoading(true);
+
+    const timer = window.setTimeout(() => {
+      void fetchPopularTagsWithFallback(main, { signal: controller.signal })
+        .then((result) => {
+          if (cancelled) return;
+          setPopularTags(result.tags);
+          setTagSource(result.source);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setPopularTags([]);
+            setTagSource('empty');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setTagsLoading(false);
+        });
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [activeCategory]);
+
+  const activeTag =
+    popularTags.find((t) => searchSubject.trim() === t.tag)?.tag ||
+    (searchSubject.trim() ? searchSubject.trim() : '');
+
+  const handleSelectCategory = (catId: string) => {
+    setActiveCategory(catId);
+    setSearchSubject('');
+  };
+
+  const showTagRow = tagsLoading || popularTags.length > 0 || Boolean(activeTag);
 
   return (
     <div
@@ -133,14 +174,20 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+        <div
+          className="flex items-center gap-2 overflow-x-auto scrollbar-none"
+          role="tablist"
+          aria-label="一級分類"
+        >
           {categoryChips.map((cat) => {
             const isActive = activeCategory === cat.id;
             return (
               <button
                 key={cat.id}
                 type="button"
-                onClick={() => setActiveCategory(cat.id)}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => handleSelectCategory(cat.id)}
                 className={`px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'bg-brand-500 text-white font-semibold'
@@ -153,26 +200,64 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
           })}
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
-          {subjectChips.map((subject) => {
-            const isActive = activeSubjectChip === subject.id;
-            return (
-              <button
-                key={subject.id}
-                type="button"
-                onClick={() => setSearchSubject(subject.id === 'all' ? '' : subject.id)}
-                className={`px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
-                  isActive
-                    ? 'bg-[#1d1d1f] text-white font-semibold'
-                    : 'bg-[#f5f5f7] text-[#424245] hover:bg-[#ebebed] hover:text-[#1d1d1f]'
-                }`}
-              >
-                {subject.label}
-              </button>
-            );
-          })}
-        </div>
-
+        {showTagRow && (
+          <div
+            className="flex items-center gap-2 overflow-x-auto scrollbar-none min-h-[34px]"
+            role="listbox"
+            aria-label="熱門標籤"
+            aria-busy={tagsLoading}
+          >
+            {tagsLoading && popularTags.length === 0 ? (
+              <span className="inline-flex items-center gap-1.5 text-[12px] text-[#86868b] px-1">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                載入熱門標籤…
+              </span>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSearchSubject('')}
+                  className={`px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
+                    !activeTag
+                      ? 'bg-[#1d1d1f] text-white font-semibold'
+                      : 'bg-[#f5f5f7] text-[#424245] hover:bg-[#ebebed] hover:text-[#1d1d1f]'
+                  }`}
+                >
+                  全部標籤
+                </button>
+                {popularTags.map((item) => {
+                  const isActive = activeTag === item.tag;
+                  return (
+                    <button
+                      key={item.tag}
+                      type="button"
+                      role="option"
+                      aria-selected={isActive}
+                      title={`${item.tag}（${item.count}）`}
+                      onClick={() =>
+                        setSearchSubject(isActive ? '' : item.tag)
+                      }
+                      className={`px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
+                        isActive
+                          ? 'bg-[#1d1d1f] text-white font-semibold'
+                          : 'bg-[#f5f5f7] text-[#424245] hover:bg-[#ebebed] hover:text-[#1d1d1f]'
+                      }`}
+                    >
+                      {item.tag}
+                    </button>
+                  );
+                })}
+                {!tagsLoading &&
+                  tagSource === 'site' &&
+                  activeCategory !== 'all' && (
+                    <span className="text-[11px] text-[#86868b] whitespace-nowrap px-1">
+                      顯示全站熱門
+                    </span>
+                  )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

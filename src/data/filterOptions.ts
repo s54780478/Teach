@@ -1,4 +1,4 @@
-import { TAXONOMY_CATEGORIES, TAXONOMY_SUBCATEGORIES } from '@/data/taxonomySeed';
+import { MAIN_CATEGORIES } from '@/data/mainCategories';
 
 /** 全台縣市（用於地區篩選） */
 export const TW_CITIES = [
@@ -26,7 +26,7 @@ export const TW_CITIES = [
   '連江縣',
 ] as const;
 
-/** 科目快捷標籤（比對 specialtyTags / 分類 / 標題） */
+/** @deprecated 細項改走 Steam 動態 tags；保留相容舊引用 */
 export const SUBJECT_QUICK_FILTERS = [
   { id: 'all', label: '全部' },
   { id: '數學', label: '數學' },
@@ -43,22 +43,8 @@ export const SUBJECT_QUICK_FILTERS = [
   { id: '健身', label: '健身' },
 ] as const;
 
-/** 首頁大類篩選（三層 taxonomy 第一層） */
+/** 首頁一級分類：固定 8 大 + 全部 */
 export const SUBJECT_CATEGORIES = [
   { id: 'all', label: '全部分類' },
-  ...TAXONOMY_CATEGORIES.map((c) => ({ id: c.id, label: c.name })),
+  ...MAIN_CATEGORIES.map((c) => ({ id: c.key, label: c.label })),
 ] as const;
-
-/** 熱門子類快捷（第二層摘要） */
-export const POPULAR_SUBCATEGORY_FILTERS = TAXONOMY_SUBCATEGORIES.filter((s) =>
-  [
-    'academic-senior-math',
-    'academic-science',
-    'lang-english',
-    'lang-japanese',
-    'prog-web',
-    'arts-piano',
-    'arts-vocal',
-    'sports-fitness',
-  ].includes(s.id)
-).map((s) => ({ id: s.name, label: s.name }));

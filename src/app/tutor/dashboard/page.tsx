@@ -53,7 +53,11 @@ import { AvatarPhotoField } from '@/components/AvatarPhotoField';
 import { SiteFooter } from '@/components/SiteFooter';
 import { LogoHomeLink } from '@/components/LogoHomeLink';
 import { useStudentPass } from '@/hooks/useStudentPass';
-import { TAXONOMY_CATEGORIES } from '@/data/taxonomySeed';
+import { TAXONOMY_CATEGORIES, categoryDisplayName } from '@/data/taxonomySeed';
+import { TaxonomyPicker } from '@/components/TaxonomyPicker';
+import { selectionFromLegacy } from '@/lib/taxonomyService';
+import { isMainCategoryKey } from '@/types/mainCategory';
+import type { TutorTaxonomySelection } from '@/types/taxonomy';
 
 const MODE_LABEL: Record<TeachingMode, string> = {
   'in-person': '面對面授課',
@@ -80,8 +84,9 @@ interface ProfileFormState {
   headline: string;
   bio: string;
   avatarUrl: string;
-  specialtyTags: string;
+  specialtyTags: string[];
   subjectCategory: string;
+  categoryId: string;
   city: string;
   district: string;
   teachingModes: TeachingModeOption[];
@@ -109,13 +114,19 @@ function courseToForm(course: TutorCourse): EditFormState {
 }
 
 function profileToForm(tutor: Tutor): ProfileFormState {
+  const legacy = selectionFromLegacy({
+    subjectCategory: tutor.subjectCategory,
+    specialtyTags: tutor.specialtyTags,
+    categoryId: tutor.mainCategory || tutor.categoryId,
+  });
   return {
     name: tutor.name,
     headline: tutor.headline.slice(0, 50),
     bio: tutor.bio,
     avatarUrl: tutor.avatarUrl,
-    specialtyTags: tutor.specialtyTags.join('、'),
-    subjectCategory: tutor.subjectCategory || '其他',
+    specialtyTags: tutor.specialtyTags || [],
+    subjectCategory: tutor.subjectCategory || categoryDisplayName(legacy.categoryId),
+    categoryId: tutor.mainCategory || tutor.categoryId || legacy.categoryId,
     city: tutor.location.city,
     district: tutor.location.district,
     teachingModes:
@@ -251,10 +262,10 @@ export default function TutorDashboardPage() {
       return;
     }
 
-    const tags = profileForm.specialtyTags
-      .split(/[,，、]/)
-      .map((t) => t.trim())
-      .filter(Boolean);
+    if (profileForm.specialtyTags.length === 0) {
+      showToast('請至少選擇或新增一個專長標籤');
+      return;
+    }
 
     setIsSavingProfile(true);
 
@@ -263,8 +274,12 @@ export default function TutorDashboardPage() {
       headline: profileForm.headline.slice(0, 50),
       bio: profileForm.bio,
       avatarUrl: profileForm.avatarUrl,
-      specialtyTags: tags,
+      specialtyTags: profileForm.specialtyTags,
       subjectCategory: profileForm.subjectCategory,
+      mainCategory: isMainCategoryKey(profileForm.categoryId)
+        ? profileForm.categoryId
+        : undefined,
+      categoryId: profileForm.categoryId,
       city: profileForm.city,
       district: profileForm.district,
       teachingModes: profileForm.teachingModes,
@@ -611,8 +626,9 @@ export default function TutorDashboardPage() {
                           headline: '',
                           bio: '',
                           avatarUrl: '',
-                          specialtyTags: '',
-                          subjectCategory: '其他',
+                          specialtyTags: [],
+                          subjectCategory: categoryDisplayName('academic'),
+                          categoryId: 'academic',
                           city: '台北市',
                           district: '',
                           teachingModes: ['online', 'in_person', 'student_home'],
@@ -709,37 +725,20 @@ export default function TutorDashboardPage() {
                           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-y"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1" htmlFor="pf-cat">
-                          授課科目分類
-                        </label>
-                        <select
-                          id="pf-cat"
-                          value={profileForm.subjectCategory}
-                          onChange={(e) =>
-                            setProfileForm({ ...profileForm, subjectCategory: e.target.value })
+                      <div className="sm:col-span-2">
+                        <TaxonomyPicker
+                          value={{
+                            categoryId: profileForm.categoryId,
+                            tags: profileForm.specialtyTags,
+                          }}
+                          onChange={(next: TutorTaxonomySelection) =>
+                            setProfileForm({
+                              ...profileForm,
+                              categoryId: next.categoryId,
+                              specialtyTags: next.tags,
+                              subjectCategory: categoryDisplayName(next.categoryId),
+                            })
                           }
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500/30"
-                        >
-                          {CATEGORIES.map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1" htmlFor="pf-tags">
-                          專長標籤（逗號分隔）
-                        </label>
-                        <input
-                          id="pf-tags"
-                          value={profileForm.specialtyTags}
-                          onChange={(e) =>
-                            setProfileForm({ ...profileForm, specialtyTags: e.target.value })
-                          }
-                          placeholder="國中數學、會考衝刺"
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                         />
                       </div>
                       <div>

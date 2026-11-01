@@ -36,10 +36,12 @@ export interface TaxonomyTree extends TaxonomyCategory {
   subcategories: TaxonomySubcategory[];
 }
 
-/** 導師刊登／編輯時選到的分類狀態 */
+/** 導師刊登／編輯：大類 + 標籤（不再使用子類） */
 export interface TutorTaxonomySelection {
+  /** main_category key（8 大固定） */
   categoryId: string;
-  subcategoryId: string;
-  /** 第三層標籤名稱（可含自訂） */
+  /** @deprecated 已移除 UI；保留相容，寫入時應為空 */
+  subcategoryId?: string;
+  /** 專長標籤（最多 5） */
   tags: string[];
 }
