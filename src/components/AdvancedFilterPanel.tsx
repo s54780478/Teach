@@ -36,11 +36,13 @@ const MODE_OPTIONS: {
   { value: 'in-person', label: '面對面授課', icon: <Users className="w-3.5 h-3.5" /> },
 ];
 
-const SORT_OPTIONS: { value: AdvancedFilterValues['sortBy']; label: string }[] = [
-  { value: 'recommended', label: '預設推薦' },
-  { value: 'price-asc', label: '價格：低到高' },
-  { value: 'price-desc', label: '價格：高到低' },
-  { value: 'rating', label: '評價：高到低' },
+export const SORT_OPTIONS: { value: AdvancedFilterValues['sortBy']; label: string }[] = [
+  { value: 'recommended', label: '精選推薦' },
+  { value: 'rating', label: '最佳評分' },
+  { value: 'popularity', label: '熱門程度' },
+  { value: 'reviews', label: '評論數量' },
+  { value: 'price-asc', label: '時薪：低到高' },
+  { value: 'price-desc', label: '時薪：高到低' },
 ];
 
 function FilterFields({

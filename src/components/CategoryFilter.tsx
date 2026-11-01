@@ -1,15 +1,24 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Gift, Monitor, MapPin, X, Loader2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { Gift, Monitor, MapPin, Loader2 } from 'lucide-react';
 import { SUBJECT_CATEGORIES } from '@/data/filterOptions';
-import type { AdvancedFilterValues } from '@/components/AdvancedFilterPanel';
+import {
+  SORT_OPTIONS,
+  type AdvancedFilterValues,
+} from '@/components/AdvancedFilterPanel';
 import type { MainCategoryKey } from '@/types/mainCategory';
 import { isMainCategoryKey } from '@/types/mainCategory';
 import {
   fetchPopularTagsWithFallback,
   type PopularTagItem,
 } from '@/lib/fetchPopularTags';
+import {
+  buildTutorsCategoryPath,
+  buildTutorsPathForTag,
+  buildTutorsTagPath,
+} from '@/lib/tutorTagRoutes';
 
 interface CategoryFilterProps {
   activeCategory: MainCategoryKey | 'all' | string;
@@ -22,8 +31,13 @@ interface CategoryFilterProps {
   setMode: (mode: AdvancedFilterValues['mode']) => void;
   sortBy: AdvancedFilterValues['sortBy'];
   setSortBy: (sort: AdvancedFilterValues['sortBy']) => void;
-  onClearAll?: () => void;
-  hasActiveFilters?: boolean;
+  /** 首頁 Hero 已有大類圖示時隱藏重複的一級分類列 */
+  hideMainCategoryTabs?: boolean;
+  /**
+   * URL 綁定頁：保留網址上的 tag（即使不在熱門 pills），
+   * 且換大類時不額外呼叫 setSearchSubject（避免雙重 router.push 卡住）
+   */
+  urlBound?: boolean;
 }
 
 const MODE_CHIPS: { id: AdvancedFilterValues['mode']; label: string }[] = [
@@ -34,7 +48,7 @@ const MODE_CHIPS: { id: AdvancedFilterValues['mode']; label: string }[] = [
 
 /**
  * 第一層：固定 8 大分類 + 全部
- * 第二層：Steam 式動態熱門 tags（過少則回退全站；仍空則隱藏）
+ * 第二層：僅該大類熱門 tags（不回退全站，避免互斥篩成 0 筆）
  */
 export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   activeCategory,
@@ -47,56 +61,126 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   setMode,
   sortBy,
   setSortBy,
-  onClearAll,
-  hasActiveFilters = false,
+  hideMainCategoryTabs = false,
+  urlBound = false,
 }) => {
   const categoryChips = useMemo(() => SUBJECT_CATEGORIES, []);
   const [popularTags, setPopularTags] = useState<PopularTagItem[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
-  const [tagSource, setTagSource] = useState<'category' | 'site' | 'empty'>('empty');
+  /** 擋掉過期 tags 回應（全站熱門寫進「個人成長」） */
+  const tagsGenRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const gen = ++tagsGenRef.current;
     const controller = new AbortController();
     const main =
       activeCategory !== 'all' && isMainCategoryKey(activeCategory)
         ? activeCategory
         : '';
 
+    // 換大類立刻清空舊 pills，避免殘留「國中數學／音樂」可點
+    setPopularTags([]);
     setTagsLoading(true);
 
     const timer = window.setTimeout(() => {
       void fetchPopularTagsWithFallback(main, { signal: controller.signal })
         .then((result) => {
-          if (cancelled) return;
+          if (gen !== tagsGenRef.current) return;
           setPopularTags(result.tags);
-          setTagSource(result.source);
         })
         .catch(() => {
-          if (!cancelled) {
-            setPopularTags([]);
-            setTagSource('empty');
-          }
+          if (gen !== tagsGenRef.current) return;
+          setPopularTags([]);
         })
         .finally(() => {
-          if (!cancelled) setTagsLoading(false);
+          if (gen === tagsGenRef.current) setTagsLoading(false);
         });
-    }, 120);
+    }, 80);
 
     return () => {
-      cancelled = true;
       controller.abort();
       window.clearTimeout(timer);
     };
   }, [activeCategory]);
 
+  // 首頁：殘留關鍵字若不在本類 pills → 清掉
+  // URL 綁定頁：保留網址 tag，避免被自動清掉後二次導航
+  useEffect(() => {
+    if (urlBound) return;
+    if (tagsLoading) return;
+    const q = searchSubject.trim();
+    if (!q || activeCategory === 'all') return;
+    if (popularTags.length === 0) return;
+    if (!popularTags.some((t) => t.tag === q)) {
+      setSearchSubject('');
+    }
+  }, [
+    urlBound,
+    tagsLoading,
+    popularTags,
+    searchSubject,
+    activeCategory,
+    setSearchSubject,
+  ]);
+
   const activeTag =
     popularTags.find((t) => searchSubject.trim() === t.tag)?.tag ||
     (searchSubject.trim() ? searchSubject.trim() : '');
 
+  /** URL 上的 tag 若不在熱門列，仍插入一顆供 Selected 顯示 */
+  const displayTags = useMemo(() => {
+    const q = searchSubject.trim();
+    if (!q || popularTags.some((t) => t.tag === q)) return popularTags;
+    return [{ tag: q, count: 0 }, ...popularTags];
+  }, [popularTags, searchSubject]);
+
   const handleSelectCategory = (catId: string) => {
+    // URL 綁定：改走 <Link>，此處僅非 URL 模式使用
+    if (urlBound) return;
+    tagsGenRef.current += 1;
+    setPopularTags([]);
+    setTagsLoading(true);
     setActiveCategory(catId);
     setSearchSubject('');
+  };
+
+  const categoryHref = (catId: string): string => {
+    if (catId === 'all') return '/';
+    if (isMainCategoryKey(catId)) return buildTutorsCategoryPath(catId);
+    return '/';
+  };
+
+  const tagHref = (
+    tagValue: string,
+    tagMain?: MainCategoryKey
+  ): string | null => {
+    if (!tagValue.trim()) {
+      if (isMainCategoryKey(activeCategory)) {
+        return buildTutorsCategoryPath(activeCategory);
+      }
+      // 全部分類清標籤 → 回首頁
+      return '/';
+    }
+    if (isMainCategoryKey(activeCategory)) {
+      return buildTutorsTagPath(activeCategory, tagValue);
+    }
+    // 全部分類：導向該 tag 所屬大類網址
+    return buildTutorsPathForTag(tagValue, tagMain || null);
+  };
+
+  const chipClass = (active: boolean, variant: 'category' | 'tag') => {
+    if (variant === 'category') {
+      return `px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
+        active
+          ? 'bg-brand-500 text-white font-semibold'
+          : 'bg-white text-[#424245] border border-black/10 hover:border-black/20'
+      }`;
+    }
+    return `px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
+      active
+        ? 'bg-[#1d1d1f] text-white font-semibold'
+        : 'bg-[#f5f5f7] text-[#424245] hover:bg-[#ebebed] hover:text-[#1d1d1f]'
+    }`;
   };
 
   const showTagRow = tagsLoading || popularTags.length > 0 || Boolean(activeTag);
@@ -154,51 +238,65 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
               aria-label="排序方式"
               className="bg-white border border-black/10 rounded-full px-3 py-1.5 text-xs text-[#1d1d1f] font-medium focus:outline-none cursor-pointer"
             >
-              <option value="recommended">推薦</option>
-              <option value="rating">評價最高</option>
-              <option value="price-asc">時薪：低到高</option>
-              <option value="price-desc">時薪：高到低</option>
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </label>
-
-          {hasActiveFilters && onClearAll && (
-            <button
-              type="button"
-              onClick={onClearAll}
-              className="inline-flex items-center gap-1 text-[12px] text-[#6e6e73] hover:text-[#1d1d1f] px-2 py-1.5 cursor-pointer"
-              aria-label="清除篩選"
-            >
-              <X className="w-3 h-3" />
-              清除
-            </button>
-          )}
         </div>
 
-        <div
-          className="flex items-center gap-2 overflow-x-auto scrollbar-none"
-          role="tablist"
-          aria-label="一級分類"
-        >
-          {categoryChips.map((cat) => {
-            const isActive = activeCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => handleSelectCategory(cat.id)}
-                className={`px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
-                  isActive
-                    ? 'bg-brand-500 text-white font-semibold'
-                    : 'bg-white text-[#424245] border border-black/10 hover:border-black/20'
-                }`}
-              >
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
+        {!hideMainCategoryTabs && (
+          <div
+            className="flex items-center gap-2 overflow-x-auto scrollbar-none"
+            role="tablist"
+            aria-label="一級分類"
+          >
+            {categoryChips.map((cat) => {
+              const isActive = activeCategory === cat.id;
+              const className = chipClass(isActive, 'category');
+              // 已選中再點：不要導航／捲到頂（尤其首頁「全部分類」→ `/`）
+              if (urlBound && isActive) {
+                return (
+                  <span
+                    key={cat.id}
+                    role="tab"
+                    aria-selected
+                    className={className}
+                  >
+                    {cat.label}
+                  </span>
+                );
+              }
+              if (urlBound) {
+                return (
+                  <Link
+                    key={cat.id}
+                    href={categoryHref(cat.id)}
+                    role="tab"
+                    aria-selected={false}
+                    className={className}
+                  >
+                    {cat.label}
+                  </Link>
+                );
+              }
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => handleSelectCategory(cat.id)}
+                  className={className}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {showTagRow && (
           <div
@@ -207,53 +305,89 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
             aria-label="熱門標籤"
             aria-busy={tagsLoading}
           >
-            {tagsLoading && popularTags.length === 0 ? (
+            {tagsLoading ? (
               <span className="inline-flex items-center gap-1.5 text-[12px] text-[#86868b] px-1">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 載入熱門標籤…
               </span>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={() => setSearchSubject('')}
-                  className={`px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
-                    !activeTag
-                      ? 'bg-[#1d1d1f] text-white font-semibold'
-                      : 'bg-[#f5f5f7] text-[#424245] hover:bg-[#ebebed] hover:text-[#1d1d1f]'
-                  }`}
-                >
-                  全部標籤
-                </button>
-                {popularTags.map((item) => {
+                {urlBound && !activeTag ? (
+                  // 已在「全部標籤」：再點不要導向 `/` 把畫面拉回頂部
+                  <span
+                    role="option"
+                    aria-selected
+                    className={chipClass(true, 'tag')}
+                  >
+                    全部標籤
+                  </span>
+                ) : urlBound ? (
+                  <Link
+                    href={
+                      isMainCategoryKey(activeCategory)
+                        ? buildTutorsCategoryPath(activeCategory)
+                        : '/'
+                    }
+                    scroll={false}
+                    className={chipClass(false, 'tag')}
+                  >
+                    全部標籤
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSearchSubject('')}
+                    className={chipClass(!activeTag, 'tag')}
+                  >
+                    全部標籤
+                  </button>
+                )}
+                {displayTags.map((item) => {
                   const isActive = activeTag === item.tag;
+                  const href = urlBound
+                    ? tagHref(
+                        isActive ? '' : item.tag,
+                        item.mainCategory
+                      )
+                    : null;
+                  const title =
+                    item.count > 0
+                      ? `${item.tag}（${item.count}）`
+                      : item.tag;
+                  const className = chipClass(isActive, 'tag');
+                  if (href) {
+                    // 點已選 tag 清回大類／首頁：不捲頂；點新 tag 進新頁則預設捲頂
+                    const clearing = isActive;
+                    return (
+                      <Link
+                        key={item.tag}
+                        href={href}
+                        scroll={!clearing}
+                        role="option"
+                        aria-selected={isActive}
+                        title={title}
+                        className={className}
+                      >
+                        {item.tag}
+                      </Link>
+                    );
+                  }
                   return (
                     <button
                       key={item.tag}
                       type="button"
                       role="option"
                       aria-selected={isActive}
-                      title={`${item.tag}（${item.count}）`}
+                      title={title}
                       onClick={() =>
                         setSearchSubject(isActive ? '' : item.tag)
                       }
-                      className={`px-3 py-1.5 rounded-full text-xs transition whitespace-nowrap cursor-pointer ${
-                        isActive
-                          ? 'bg-[#1d1d1f] text-white font-semibold'
-                          : 'bg-[#f5f5f7] text-[#424245] hover:bg-[#ebebed] hover:text-[#1d1d1f]'
-                      }`}
+                      className={className}
                     >
                       {item.tag}
                     </button>
                   );
                 })}
-                {!tagsLoading &&
-                  tagSource === 'site' &&
-                  activeCategory !== 'all' && (
-                    <span className="text-[11px] text-[#86868b] whitespace-nowrap px-1">
-                      顯示全站熱門
-                    </span>
-                  )}
               </>
             )}
           </div>

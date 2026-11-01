@@ -21,21 +21,248 @@ import {
   tutorMatchesModeFilter,
 } from '@/lib/teachingModes';
 import { tutorMatchesKeyword, tutorMatchesMainCategory } from '@/lib/tutorFilters';
+import {
+  extractYoutubeUrlFromText,
+  stripExternalLinksFromText,
+  validateOptionalYoutubeUrl,
+} from '@/lib/youtubeUrl';
+import {
+  compareByPopularity,
+  compareByRecommended,
+} from '@/lib/tutorRanking';
 
 /** 冷啟動示範導師 id（tutor-1…），與真實註冊 UUID 分開 */
-function isDemoTutorId(id: string): boolean {
+export function isDemoTutorId(id: string): boolean {
   return /^tutor-\d+$/.test(id);
 }
 
+const EMPTY_CONTACT = { lineId: '', phone: '', email: '' } as const;
+
+/** 公開列表／履歷：不帶出聯絡方式（買方解鎖制） */
+export function redactTutorContact(tutor: Tutor): Tutor {
+  return { ...tutor, contact: { ...EMPTY_CONTACT } };
+}
+
 /**
- * 列表一律帶上程式內示範導師（新照片／較多人數），
+ * 已通過 Student Pass 流程後再取聯絡方式。
+ * 示範老師：從 MOCK；真實老師：單筆讀取（完整防洩需 DB view，見 supabase/tutors_public_view.sql）
+ */
+export async function resolveTutorContact(
+  tutorId: string
+): Promise<Tutor['contact'] | null> {
+  if (isDemoTutorId(tutorId)) {
+    const mock = MOCK_TUTORS.find((t) => t.id === tutorId);
+    return mock?.contact ?? null;
+  }
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase
+      .from('tutors')
+      .select('line_id, phone, email')
+      .eq('id', tutorId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return {
+      lineId: data.line_id || '未提供',
+      phone: data.phone || '未提供',
+      email: data.email || '未提供',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 可能尚未在正式 DB 執行遷移的欄位（缺了就降級略過；youtube_url 不在此列） */
+const OPTIONAL_TUTOR_COLUMNS = [
+  'teaching_modes',
+  'free_lesson_minutes',
+  'response_time',
+  'response_speed_minutes',
+  'category_id',
+  'main_category',
+  'is_verified',
+  'is_identity_verified',
+  'is_diploma_verified',
+] as const;
+
+function stripAllOptionalTutorColumns(
+  fields: Record<string, unknown>
+): Record<string, unknown> {
+  const next = { ...fields };
+  for (const col of OPTIONAL_TUTOR_COLUMNS) {
+    delete next[col];
+  }
+  return next;
+}
+
+function omitMissingColumnFromPayload(
+  fields: Record<string, unknown>,
+  errorMessage: string
+): Record<string, unknown> | null {
+  const missing = errorMessage.match(
+    /Could not find the '([^']+)' column/i
+  )?.[1];
+  if (!missing || !(missing in fields)) return null;
+
+  const next = { ...fields };
+  delete next[missing];
+  // 成對欄位一併拿掉，避免下一輪又撞 schema cache
+  if (missing === 'response_time') delete next.response_speed_minutes;
+  if (missing === 'response_speed_minutes') delete next.response_time;
+  if (missing === 'main_category') delete next.category_id;
+  if (missing === 'category_id') delete next.main_category;
+  return next;
+}
+
+/**
+ * 寫入 tutors：遇「欄位不在 schema cache」自動拿掉該欄重試。
+ * youtube_url 不走此函式（由 persistTutorYoutubeUrl 獨立處理）。
+ */
+async function writeTutorRow(params: {
+  userId: string;
+  fields: Record<string, unknown>;
+  mode: 'update' | 'insert';
+  insertExtras?: Record<string, unknown>;
+}): Promise<{ success: boolean; error?: string }> {
+  let payload: Record<string, unknown> = { ...params.fields };
+  let strippedAll = false;
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const result =
+      params.mode === 'update'
+        ? await supabase.from('tutors').update(payload).eq('id', params.userId)
+        : await supabase.from('tutors').insert([
+            {
+              id: params.userId,
+              ...payload,
+              ...(params.insertExtras || {}),
+            },
+          ]);
+
+    if (!result.error) return { success: true };
+
+    const msg = result.error.message;
+    console.error(`⚠️ tutors ${params.mode} 失敗 (attempt ${attempt + 1}):`, msg);
+
+    const trimmed = omitMissingColumnFromPayload(payload, msg);
+    if (trimmed) {
+      payload = trimmed;
+      continue;
+    }
+
+    if (
+      !strippedAll &&
+      (/schema cache|could not find the '/i.test(msg) ||
+        /teaching_modes|free_lesson_minutes|response_time|response_speed|category_id|main_category/i.test(
+          msg
+        ))
+    ) {
+      payload = stripAllOptionalTutorColumns(payload);
+      strippedAll = true;
+      continue;
+    }
+
+    return { success: false, error: msg };
+  }
+
+  return {
+    success: false,
+    error:
+      '儲存失敗：資料庫缺少欄位。請於 Supabase SQL Editor 執行 supabase/tutor_superprof_fields.sql 後再試。',
+  };
+}
+
+function youtubeColumnMissingError(resolvedYoutube: string | null | undefined) {
+  if (!resolvedYoutube) return null;
+  return {
+    success: false as const,
+    error:
+      '資料庫尚未建立 youtube_url 欄位。請於 Supabase SQL Editor 執行 supabase/tutor_youtube.sql 後再儲存一次。',
+  };
+}
+
+/**
+ * 影片欄位獨立寫入並回讀驗證，避免主檔降級重試時把 youtube_url 拿掉。
+ * resolved === undefined → 不改動既有值；null → 清除；string → 寫入。
+ */
+async function persistTutorYoutubeUrl(
+  userId: string,
+  resolved: string | null | undefined
+): Promise<{ success: boolean; error?: string }> {
+  if (resolved === undefined) return { success: true };
+
+  const { data, error } = await supabase
+    .from('tutors')
+    .update({ youtube_url: resolved })
+    .eq('id', userId)
+    .select('id, youtube_url')
+    .maybeSingle();
+
+  if (error) {
+    if (/youtube_url/i.test(error.message)) {
+      const blocked = youtubeColumnMissingError(resolved);
+      if (blocked) return blocked;
+    }
+    return { success: false, error: error.message };
+  }
+
+  if (!data) {
+    return {
+      success: false,
+      error: '影片未寫入（可能未登入或無權限）。請重新登入後再儲存一次。',
+    };
+  }
+
+  if (resolved && data.youtube_url !== resolved) {
+    return {
+      success: false,
+      error: '影片網址儲存失敗，請再試一次。若持續失敗請確認已執行 supabase/tutor_youtube.sql。',
+    };
+  }
+
+  return { success: true };
+}
+
+/** 解析要寫入的 youtube：有值就用；空白則保留 DB 既有（不洗掉）；rescue 自 bio */
+function resolveYoutubeForSave(
+  inputYoutubeUrl: string | null | undefined,
+  existingYoutubeUrl: string | null | undefined,
+  bio: string,
+  headline: string,
+  clearYoutube?: boolean
+): { ok: true; value: string | null | undefined } | { ok: false; message: string } {
+  if (clearYoutube) return { ok: true, value: null };
+
+  if (inputYoutubeUrl === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  const trimmed = (inputYoutubeUrl || '').trim();
+  if (trimmed) {
+    const yt = validateOptionalYoutubeUrl(trimmed);
+    if (!yt.ok) return { ok: false, message: yt.message };
+    return { ok: true, value: yt.value };
+  }
+
+  // 表單空白：先試從簡介救援，否則不改動 DB（保留已存影片）
+  const rescued =
+    extractYoutubeUrlFromText(bio) || extractYoutubeUrlFromText(headline);
+  if (rescued) return { ok: true, value: rescued };
+  if (existingYoutubeUrl) return { ok: true, value: undefined };
+  return { ok: true, value: undefined };
+}
+
+/**
+ * 列表一律帶上程式內示範導師（覆蓋全部 8 大類），
  * 並隱藏 DB 裡同 id 的舊 seed；真實註冊導師（如 UUID）照常顯示。
+ * 示範列永遠以 MOCK_TUTORS 為準，避免舊 seed 缺類別時點分類是空的。
  */
 function mergeDemoCatalog(dbTutors: Tutor[]): Tutor[] {
   const real = dbTutors.filter((t) => !isDemoTutorId(t.id));
   const byId = new Map<string, Tutor>();
-  for (const t of MOCK_TUTORS) byId.set(t.id, t);
+  // 先放真實導師，再強制覆寫示範 id → 保證 8 大類都有假老師
   for (const t of real) byId.set(t.id, t);
+  for (const t of MOCK_TUTORS) byId.set(t.id, t);
   return Array.from(byId.values());
 }
 
@@ -74,6 +301,7 @@ export interface TutorDbRow {
   is_verified?: boolean | null;
   is_identity_verified?: boolean | null;
   is_diploma_verified?: boolean | null;
+  youtube_url?: string | null;
 }
 
 export type CourseStatus = 'active' | 'paused';
@@ -122,7 +350,13 @@ export interface TutorSearchFilters {
   minRate?: number;
   maxRate?: number;
   mode?: 'all' | 'in-person' | 'online' | 'hybrid';
-  sortBy?: 'recommended' | 'price-asc' | 'price-desc' | 'rating';
+  sortBy?:
+    | 'recommended'
+    | 'price-asc'
+    | 'price-desc'
+    | 'rating'
+    | 'popularity'
+    | 'reviews';
   onlyPublished?: boolean;
 }
 
@@ -172,6 +406,12 @@ export interface TutorProfileInput {
   email?: string;
   /** 自訂頭像公開 URL；空則沿用既有或預設頭像 */
   avatarUrl?: string;
+  /**
+   * YouTube 自我介紹（選填）。
+   * 有字串 → 寫入；空白／未傳 → 保留資料庫既有；clearYoutube → 清除。
+   */
+  youtubeUrl?: string | null;
+  clearYoutube?: boolean;
 }
 
 function parseFreeLessonMinutes(raw: unknown): FreeLessonMinutes {
@@ -180,7 +420,10 @@ function parseFreeLessonMinutes(raw: unknown): FreeLessonMinutes {
   return 60;
 }
 
-export function mapDbRowToTutor(row: TutorDbRow): Tutor {
+export function mapDbRowToTutor(
+  row: TutorDbRow,
+  options?: { includeContact?: boolean }
+): Tutor {
   const legacyMode: TeachingMode =
     row.mode === 'in-person' || row.mode === 'online' || row.mode === 'hybrid'
       ? row.mode
@@ -209,14 +452,17 @@ export function mapDbRowToTutor(row: TutorDbRow): Tutor {
     subjectCategory: row.subject_category,
   });
 
+  const yt = validateOptionalYoutubeUrl(row.youtube_url || '');
+
   return {
     id: row.id,
     name: row.name,
-    headline: (row.headline || '').slice(0, 50),
-    bio: row.bio || '',
+    headline: stripExternalLinksFromText((row.headline || '').slice(0, 50)),
+    bio: stripExternalLinksFromText(row.bio || ''),
+    youtubeUrl: yt.ok ? yt.value : null,
     avatarUrl:
       row.avatar_url ||
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
+      `https://api.dicebear.com/9.x/notionists/png?seed=${encodeURIComponent(row.name || row.id)}&backgroundColor=ffdfdf`,
     verification: {
       isIdentityVerified: identityVerified,
       isDiplomaVerified: diplomaVerified,
@@ -245,11 +491,14 @@ export function mapDbRowToTutor(row: TutorDbRow): Tutor {
       reviewCount: Number(row.review_count) || 0,
     },
     badge: (row.badge as Tutor['badge']) || undefined,
-    contact: {
-      lineId: row.line_id || '未提供',
-      phone: row.phone || '未提供',
-      email: row.email || '未提供',
-    },
+    // 公開 mapping 預設不帶聯絡方式；本人後台／解鎖後再帶
+    contact: options?.includeContact
+      ? {
+          lineId: row.line_id || '未提供',
+          phone: row.phone || '未提供',
+          email: row.email || '未提供',
+        }
+      : { ...EMPTY_CONTACT },
   };
 }
 
@@ -273,7 +522,7 @@ export async function getTutorProfileByUserId(
       return null;
     }
     if (!data) return null;
-    return mapDbRowToTutor(data as TutorDbRow);
+    return mapDbRowToTutor(data as TutorDbRow, { includeContact: true });
   } catch (err) {
     console.warn('⚠️ 讀取個人導師履歷異常:', err);
     return null;
@@ -315,10 +564,21 @@ export async function upsertTutorProfile(
       subjectCategory: input.subjectCategory,
     });
 
-    const sharedFields = {
+    const ytResolved = resolveYoutubeForSave(
+      input.youtubeUrl,
+      existing?.youtubeUrl,
+      input.bio,
+      input.headline,
+      input.clearYoutube
+    );
+    if (!ytResolved.ok) return { success: false, error: ytResolved.message };
+    const resolvedYoutube = ytResolved.value;
+
+    // 主檔不含 youtube_url（改由 persistTutorYoutubeUrl 獨立寫入驗證）
+    const sharedFields: Record<string, unknown> = {
       name: input.name.trim(),
-      headline: input.headline.trim().slice(0, 50),
-      bio: input.bio.trim(),
+      headline: stripExternalLinksFromText(input.headline.trim()).slice(0, 50),
+      bio: stripExternalLinksFromText(input.bio.trim()),
       degree: input.degree.trim() || null,
       specialty_tags: input.specialtyTags,
       main_category: mainCategory,
@@ -342,70 +602,24 @@ export async function upsertTutorProfile(
       is_published: true,
     };
 
-    if (existing) {
-      const { error } = await supabase
-        .from('tutors')
-        .update(sharedFields)
-        .eq('id', userId);
+    const writeResult = await writeTutorRow({
+      userId,
+      fields: sharedFields,
+      mode: existing ? 'update' : 'insert',
+      insertExtras: existing
+        ? undefined
+        : {
+            rating: 5.0,
+            review_count: 0,
+            taught_hours: 0,
+            badge: '新星特選',
+            is_verified: false,
+          },
+    });
+    if (!writeResult.success) return writeResult;
 
-      if (error) {
-        console.error('⚠️ 更新導師履歷失敗:', error.message);
-        // 若尚未執行 tutor_superprof_fields.sql，降級寫入舊欄位
-        if (/teaching_modes|free_lesson_minutes|response_time|category_id|main_category/i.test(error.message)) {
-          const {
-            teaching_modes: _tm,
-            free_lesson_minutes: _fl,
-            response_time: _rt,
-            category_id: _c,
-            main_category: _mc,
-            ...legacy
-          } = sharedFields;
-          const retry = await supabase.from('tutors').update(legacy).eq('id', userId);
-          if (retry.error) return { success: false, error: retry.error.message };
-          return { success: true };
-        }
-        return { success: false, error: error.message };
-      }
-    } else {
-      const { error } = await supabase.from('tutors').insert([
-        {
-          id: userId,
-          ...sharedFields,
-          rating: 5.0,
-          review_count: 0,
-          taught_hours: 0,
-          badge: '新星特選',
-          is_verified: false,
-        },
-      ]);
-
-      if (error) {
-        console.error('⚠️ 新增導師履歷失敗:', error.message);
-        if (/teaching_modes|free_lesson_minutes|response_time|category_id|main_category/i.test(error.message)) {
-          const {
-            teaching_modes: _tm,
-            free_lesson_minutes: _fl,
-            response_time: _rt,
-            category_id: _c,
-            main_category: _mc,
-            ...legacy
-          } = sharedFields;
-          const retry = await supabase.from('tutors').insert([
-            {
-              id: userId,
-              ...legacy,
-              rating: 5.0,
-              review_count: 0,
-              taught_hours: 0,
-              badge: '新星特選',
-            },
-          ]);
-          if (retry.error) return { success: false, error: retry.error.message };
-          return { success: true };
-        }
-        return { success: false, error: error.message };
-      }
-    }
+    const ytPersist = await persistTutorYoutubeUrl(userId, resolvedYoutube);
+    if (!ytPersist.success) return ytPersist;
 
     // 同步寫入／更新 courses（課程刊登列）；表不存在時不阻斷 tutors 成功
     const courseSync = await upsertTutorCourse(userId, input);
@@ -506,7 +720,7 @@ export async function getTutorById(
   const mockFallback = () => {
     const mock = MOCK_TUTORS.find((t) => t.id === tutorId) || null;
     return {
-      tutor: mock,
+      tutor: mock ? redactTutorContact(mock) : null,
       isFromSupabase: false as const,
       error: isSupabaseConfigured ? undefined : 'Supabase 尚未設定，使用示範資料',
     };
@@ -576,41 +790,119 @@ export async function searchTutors(
   const categoryFilter =
     mainCategory && isMainCategoryKey(mainCategory) ? mainCategory : '';
 
-  const applyClientFilters = (list: Tutor[]): Tutor[] => {
-    let next = [...list];
-    if (onlyPublished) {
-      // mock 預設皆可視為上架
-    }
-    // 有指定分類才限制；純關鍵字不強制 main_category
-    if (categoryFilter) {
-      next = next.filter((t) => tutorMatchesMainCategory(t, categoryFilter));
-    }
-    if (region.trim()) {
-      const rq = region.trim().toLowerCase();
-      const short = rq.replace(/(市|縣)$/, '');
-      next = next.filter((t) => {
-        const blob = `${t.location.city}${t.location.district}${t.location.displayLocation}`.toLowerCase();
-        return blob.includes(rq) || blob.includes(short);
-      });
-    }
-    if (keyword) {
-      next = next.filter((t) => tutorMatchesKeyword(t, keyword));
-    }
-    if (typeof minRate === 'number') next = next.filter((t) => t.hourlyRate >= minRate);
-    if (typeof maxRate === 'number') next = next.filter((t) => t.hourlyRate <= maxRate);
-    if (mode === 'in-person' || mode === 'online' || mode === 'hybrid') {
-      next = next.filter((t) =>
-        tutorMatchesModeFilter(t.teachingModes || [], t.mode, mode)
-      );
-    }
-
+  const sortTutors = (list: Tutor[]): Tutor[] => {
+    const next = [...list];
     next.sort((a, b) => {
-      if (sortBy === 'rating') return b.reviews.rating - a.reviews.rating;
       if (sortBy === 'price-asc') return a.hourlyRate - b.hourlyRate;
       if (sortBy === 'price-desc') return b.hourlyRate - a.hourlyRate;
-      return b.reviews.rating - a.reviews.rating;
+      if (sortBy === 'rating') {
+        const byRating = b.reviews.rating - a.reviews.rating;
+        if (byRating !== 0) return byRating;
+        return b.reviews.reviewCount - a.reviews.reviewCount;
+      }
+      if (sortBy === 'reviews') {
+        const byCount = b.reviews.reviewCount - a.reviews.reviewCount;
+        if (byCount !== 0) return byCount;
+        return b.reviews.rating - a.reviews.rating;
+      }
+      if (sortBy === 'popularity') {
+        return compareByPopularity(a, b);
+      }
+      // 精選推薦（預設）：生態平衡綜合分
+      return compareByRecommended(a, b);
     });
     return next;
+  };
+
+  /**
+   * 客戶端篩選。若大類 + 關鍵字／地區互斥導致 0 筆，
+   * 依序放寬關鍵字→地區（保留大類與授課方式），避免八大類點進去是空的。
+   */
+  const applyClientFilters = (list: Tutor[]): Tutor[] => {
+    const byCategory = (rows: Tutor[]) =>
+      categoryFilter
+        ? rows.filter((t) => tutorMatchesMainCategory(t, categoryFilter))
+        : rows;
+
+    const byRegion = (rows: Tutor[]) => {
+      if (!region.trim()) return rows;
+      const rq = region.trim().toLowerCase();
+      const short = rq.replace(/(市|縣)$/, '');
+      return rows.filter((t) => {
+        const blob =
+          `${t.location.city}${t.location.district}${t.location.displayLocation}`.toLowerCase();
+        return blob.includes(rq) || blob.includes(short);
+      });
+    };
+
+    const byKeyword = (rows: Tutor[]) =>
+      keyword ? rows.filter((t) => tutorMatchesKeyword(t, keyword)) : rows;
+
+    const byRate = (rows: Tutor[]) => {
+      let next = rows;
+      if (typeof minRate === 'number') {
+        next = next.filter((t) => t.hourlyRate >= minRate);
+      }
+      if (typeof maxRate === 'number') {
+        next = next.filter((t) => t.hourlyRate <= maxRate);
+      }
+      return next;
+    };
+
+    const byMode = (rows: Tutor[]) => {
+      if (mode !== 'in-person' && mode !== 'online' && mode !== 'hybrid') {
+        return rows;
+      }
+      return rows.filter((t) =>
+        tutorMatchesModeFilter(t.teachingModes || [], t.mode, mode)
+      );
+    };
+
+    const run = (rows: Tutor[], opts: { keyword: boolean; region: boolean }) =>
+      byMode(
+        byRate(
+          (opts.keyword ? byKeyword : (x: Tutor[]) => x)(
+            (opts.region ? byRegion : (x: Tutor[]) => x)(byCategory(rows))
+          )
+        )
+      );
+
+    // 候選池：傳入列表 + 示範老師（確保缺類別的 DB 不會讓大類變空）
+    const pool = mergeDemoCatalog(list);
+
+    let next = run(pool, { keyword: true, region: true });
+
+    // 有關鍵字（標籤頁／搜尋）時不可丟棄 keyword，否則會顯示無關導師
+    if (next.length === 0 && keyword) {
+      if (region.trim()) {
+        next = run(pool, { keyword: true, region: false });
+      }
+      if (next.length === 0 && categoryFilter) {
+        const catMocks = MOCK_TUTORS.filter(
+          (t) =>
+            tutorMatchesMainCategory(t, categoryFilter) &&
+            tutorMatchesKeyword(t, keyword)
+        );
+        next = byMode(catMocks);
+        if (next.length === 0) next = catMocks;
+      }
+      return sortTutors(next);
+    }
+
+    // 僅大類瀏覽：允許放寬地區／用示範資料填補空類
+    if (next.length === 0 && categoryFilter && region.trim()) {
+      next = run(pool, { keyword: false, region: false });
+    }
+    if (next.length === 0 && categoryFilter) {
+      const catMocks = MOCK_TUTORS.filter((t) =>
+        tutorMatchesMainCategory(t, categoryFilter)
+      );
+      next = byMode(catMocks);
+      // 授課方式也互斥時（例如大類全是線上卻選面授）→ 仍回該大類，避免空白
+      if (next.length === 0) next = catMocks;
+    }
+
+    return sortTutors(next);
   };
 
   /**
@@ -620,7 +912,7 @@ export async function searchTutors(
    */
   if (!isSupabaseConfigured) {
     return {
-      tutors: applyClientFilters(MOCK_TUTORS),
+      tutors: applyClientFilters(MOCK_TUTORS).map(redactTutorContact),
       isFromSupabase: false,
       error: 'Supabase 尚未設定，使用示範資料',
     };
@@ -644,11 +936,13 @@ export async function searchTutors(
       ]);
       const rpcResult = await rpcOrTimeout;
       if (!rpcResult.error && Array.isArray(rpcResult.data)) {
-        let mapped = (rpcResult.data as TutorDbRow[]).map(mapDbRowToTutor);
+        let mapped = (rpcResult.data as TutorDbRow[]).map((row) =>
+          mapDbRowToTutor(row)
+        );
         const merged = mergeDemoCatalog(mapped);
         // RPC 已處理分類／關鍵字；其餘篩選仍走 client
         return {
-          tutors: applyClientFilters(merged),
+          tutors: applyClientFilters(merged).map(redactTutorContact),
           isFromSupabase: true,
         };
       }
@@ -666,9 +960,19 @@ export async function searchTutors(
     if (mode === 'online') query = query.in('mode', ['online', 'hybrid']);
     if (mode === 'hybrid') query = query.eq('mode', 'hybrid');
 
-    if (sortBy === 'price-asc') query = query.order('hourly_rate', { ascending: true });
-    else if (sortBy === 'price-desc') query = query.order('hourly_rate', { ascending: false });
-    else query = query.order('rating', { ascending: false });
+    if (sortBy === 'price-asc') {
+      query = query.order('hourly_rate', { ascending: true });
+    } else if (sortBy === 'price-desc') {
+      query = query.order('hourly_rate', { ascending: false });
+    } else if (sortBy === 'reviews' || sortBy === 'popularity') {
+      query = query
+        .order('review_count', { ascending: false })
+        .order('rating', { ascending: false });
+    } else {
+      query = query
+        .order('rating', { ascending: false })
+        .order('review_count', { ascending: false });
+    }
 
     // 避免本機網路／RLS 卡住導致首頁永遠 loading
     const queryOrTimeout = Promise.race([
@@ -686,7 +990,7 @@ export async function searchTutors(
     if (error) {
       console.warn('⚠️ Supabase searchTutors 提示:', error.message);
       return {
-        tutors: applyClientFilters(MOCK_TUTORS),
+        tutors: applyClientFilters(MOCK_TUTORS).map(redactTutorContact),
         isFromSupabase: false,
         error: error.message,
       };
@@ -695,11 +999,18 @@ export async function searchTutors(
     const mapped = (data || []).map((row) => mapDbRowToTutor(row as TutorDbRow));
     // 示範導師（tutor-*）用程式名單蓋掉舊 seed；真實註冊導師一併保留
     const merged = mergeDemoCatalog(mapped);
-    return { tutors: applyClientFilters(merged), isFromSupabase: true };
+    return {
+      tutors: applyClientFilters(merged).map(redactTutorContact),
+      isFromSupabase: true,
+    };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : '連線失敗';
     console.error('⚠️ searchTutors 異常:', err);
-    return { tutors: applyClientFilters(MOCK_TUTORS), isFromSupabase: false, error: message };
+    return {
+      tutors: applyClientFilters(MOCK_TUTORS).map(redactTutorContact),
+      isFromSupabase: false,
+      error: message,
+    };
   }
 }
 
@@ -775,6 +1086,8 @@ export interface TutorDashboardProfileInput {
   subjectCategory: string;
   mainCategory?: MainCategoryKey;
   categoryId?: string;
+  youtubeUrl?: string | null;
+  clearYoutube?: boolean;
   city: string;
   district: string;
   mode?: TeachingMode;
@@ -793,6 +1106,8 @@ export async function updateTutorDashboardProfile(
   input: TutorDashboardProfileInput
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const existing = await getTutorProfileByUserId(userId);
+
     const displayLocation = input.district.trim()
       ? `${input.city.trim()}${input.district.trim()}`
       : input.city.trim();
@@ -815,10 +1130,19 @@ export async function updateTutorDashboardProfile(
       subjectCategory: input.subjectCategory,
     });
 
-    const payload = {
+    const ytResolved = resolveYoutubeForSave(
+      input.youtubeUrl,
+      existing?.youtubeUrl,
+      input.bio,
+      input.headline,
+      input.clearYoutube
+    );
+    if (!ytResolved.ok) return { success: false, error: ytResolved.message };
+
+    const payload: Record<string, unknown> = {
       name: input.name.trim(),
-      headline: input.headline.trim().slice(0, 50),
-      bio: input.bio.trim(),
+      headline: stripExternalLinksFromText(input.headline.trim()).slice(0, 50),
+      bio: stripExternalLinksFromText(input.bio.trim()),
       avatar_url: avatarUrl,
       specialty_tags: input.specialtyTags,
       main_category: mainCategory,
@@ -841,24 +1165,16 @@ export async function updateTutorDashboardProfile(
       is_published: true,
     };
 
-    const { error } = await supabase.from('tutors').update(payload).eq('id', userId);
+    const writeResult = await writeTutorRow({
+      userId,
+      fields: payload,
+      mode: 'update',
+    });
+    if (!writeResult.success) return writeResult;
 
-    if (error) {
-      if (/teaching_modes|free_lesson_minutes|response_time|main_category|category_id/i.test(error.message)) {
-        const {
-          teaching_modes: _a,
-          free_lesson_minutes: _b,
-          response_time: _c,
-          main_category: _mc,
-          category_id: _cid,
-          ...legacy
-        } = payload;
-        const retry = await supabase.from('tutors').update(legacy).eq('id', userId);
-        if (retry.error) return { success: false, error: retry.error.message };
-        return { success: true };
-      }
-      return { success: false, error: error.message };
-    }
+    const ytPersist = await persistTutorYoutubeUrl(userId, ytResolved.value);
+    if (!ytPersist.success) return ytPersist;
+
     return { success: true };
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : '更新失敗' };

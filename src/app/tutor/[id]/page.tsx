@@ -40,6 +40,8 @@ import { useStudentPass } from '@/hooks/useStudentPass';
 import { teachingModeTags } from '@/lib/tutorFilters';
 import { DEFAULT_RESPONSE_TIME } from '@/lib/teachingModes';
 import { authIntentForTutor, PASS_UNLOCK_HINT } from '@/lib/contactFlowCopy';
+import { TutorYoutubeEmbed } from '@/components/TutorYoutubeEmbed';
+import { stripExternalLinksFromText } from '@/lib/youtubeUrl';
 
 export default function TutorPublicProfilePage() {
   const params = useParams();
@@ -203,7 +205,7 @@ export default function TutorPublicProfilePage() {
             </Link>
 
             <div className="flex flex-col md:flex-row gap-8 md:gap-10 md:items-start">
-              <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-[26px] overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex-shrink-0 mx-auto md:mx-0 bg-zinc-200">
+              <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-[26px] overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.08)] flex-shrink-0 mx-auto md:mx-0 bg-[#f5f5f7]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={tutor.avatarUrl}
@@ -214,11 +216,19 @@ export default function TutorPublicProfilePage() {
 
               <div className="flex-1 min-w-0 text-center md:text-left">
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mb-3">
-                  <TrustBadges tutor={tutor} size="md" variant="light" max={4} />
-                  {tutor.badge && !trust.superTutor && (
-                    <span className="text-[11px] font-semibold text-[#5c5c5c] bg-[#f5f5f5] px-2.5 py-1 rounded-full">
-                      {tutor.badge}
+                  {/^tutor-\d+$/.test(tutor.id) ? (
+                    <span className="text-[11px] font-semibold text-[#6e6e73] bg-[#f5f5f7] px-2.5 py-1 rounded-full">
+                      示範師資（非真實刊登）
                     </span>
+                  ) : (
+                    <>
+                      <TrustBadges tutor={tutor} size="md" variant="light" max={4} />
+                      {tutor.badge && !trust.superTutor && (
+                        <span className="text-[11px] font-semibold text-[#5c5c5c] bg-[#f5f5f5] px-2.5 py-1 rounded-full">
+                          {tutor.badge}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -226,7 +236,7 @@ export default function TutorPublicProfilePage() {
                   {tutor.name}
                 </h1>
                 <p className="mt-2 text-base sm:text-lg text-[#5c5c5c] leading-snug max-w-2xl mx-auto md:mx-0">
-                  {tutor.headline}
+                  {stripExternalLinksFromText(tutor.headline)}
                 </p>
 
                 <div className="mt-3 flex flex-wrap items-center justify-center md:justify-start gap-1.5">
@@ -338,9 +348,16 @@ export default function TutorPublicProfilePage() {
         {/* Content */}
         <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10">
           <div className="lg:col-span-2 space-y-8">
+            {tutor.youtubeUrl ? (
+              <TutorYoutubeEmbed
+                youtubeUrl={tutor.youtubeUrl}
+                title={`${tutor.name} 的自我介紹影片`}
+              />
+            ) : null}
+
             <ProfileBlock title="關於我" icon={<BookOpen className="w-4 h-4" />}>
               <p className="text-sm sm:text-[15px] text-[#5c5c5c] leading-relaxed whitespace-pre-line">
-                {tutor.bio}
+                {stripExternalLinksFromText(tutor.bio)}
               </p>
               {tutor.specialtyTags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-4">

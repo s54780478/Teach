@@ -6,6 +6,7 @@ import { Heart, Star, Gift, MessageCircle } from 'lucide-react';
 import { Tutor } from '@/types/tutor';
 import { getTutorTrustFlags } from '@/lib/tutorTrust';
 import { teachingModeShortLabel } from '@/lib/tutorFilters';
+import { isDemoTutorId } from '@/lib/tutorService';
 
 interface TutorCardProps {
   tutor: Tutor;
@@ -21,6 +22,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({
 }) => {
   const [liked, setLiked] = useState(false);
   const trust = getTutorTrustFlags(tutor);
+  const isDemo = isDemoTutorId(tutor.id);
   const modeShort = teachingModeShortLabel(tutor.mode, tutor.teachingModes);
   const profileHref = `/tutor/${tutor.id}`;
   const ratingDisplay =
@@ -30,7 +32,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({
     <article className="group flex flex-col">
       <Link
         href={profileHref}
-        className="relative aspect-square w-full overflow-hidden rounded-[28px] sm:rounded-[32px] bg-zinc-200 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6363] transition"
+        className="relative aspect-square w-full overflow-hidden rounded-[28px] sm:rounded-[32px] bg-[#f5f5f7] text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6363] transition"
         aria-label={`查看 ${tutor.name} 的公開履歷`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -39,13 +41,20 @@ export const TutorCard: React.FC<TutorCardProps> = ({
           alt={tutor.name}
           className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
 
-        {tutor.firstLessonFree && (
-          <span className="absolute top-3 left-3 z-10 inline-flex items-center gap-1 text-[11px] font-bold text-white bg-[#FF6363] px-2.5 py-1 rounded-full shadow-sm">
-            第一堂課免費
-          </span>
-        )}
+        <div className="absolute top-3 left-3 z-10 flex flex-wrap gap-1.5 items-start max-w-[70%]">
+          {isDemo && (
+            <span className="inline-flex items-center text-[10px] font-semibold tracking-wide text-white/95 bg-black/55 backdrop-blur-[2px] px-2 py-0.5 rounded-full">
+              示範
+            </span>
+          )}
+          {tutor.firstLessonFree && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-[#FF6363] px-2.5 py-1 rounded-full shadow-sm">
+              第一堂課免費
+            </span>
+          )}
+        </div>
 
         <span
           role="button"
@@ -94,7 +103,7 @@ export const TutorCard: React.FC<TutorCardProps> = ({
               <span className="text-[#6e6e73]">新進活躍老師</span>
             )}
           </div>
-          {trust.superTutor && (
+          {trust.superTutor && !isDemo && (
             <span className="text-[13px] font-semibold text-[#5e5ce6]">Ambassador</span>
           )}
         </div>

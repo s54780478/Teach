@@ -19,6 +19,7 @@ import { ContactViewModal } from '@/components/ContactViewModal';
 import { UnlockedTutorsDrawer } from '@/components/UnlockedTutorsDrawer';
 import {
   DEFAULT_ADVANCED_FILTERS,
+  SORT_OPTIONS,
   type AdvancedFilterValues,
 } from '@/components/AdvancedFilterPanel';
 import { EmptySearchState } from '@/components/EmptySearchState';
@@ -143,7 +144,7 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
         <SearchBreadcrumb
           subject={subjectQuery}
           regionLabel={onlineRegion ? '線上' : regionLabel}
-          regionForPath={onlineRegion ? '線上' : regionSlug}
+          regionForPath={onlineRegion ? 'online' : regionSlug}
           className="mb-5"
         />
 
@@ -188,7 +189,7 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
             </button>
           ))}
           <label className="ml-auto inline-flex items-center gap-2 text-[12px] text-[#6e6e73]">
-            排序
+            <span className="hidden sm:inline">排序</span>
             <select
               value={advanced.sortBy}
               onChange={(e) =>
@@ -200,10 +201,11 @@ export const LessonsListing: React.FC<LessonsListingProps> = ({
               aria-label="排序方式"
               className="bg-white border border-black/10 rounded-full px-3 py-1.5 text-xs text-[#1d1d1f] font-medium focus:outline-none cursor-pointer"
             >
-              <option value="recommended">推薦</option>
-              <option value="rating">評價最高</option>
-              <option value="price-asc">時薪：低到高</option>
-              <option value="price-desc">時薪：高到低</option>
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </label>
         </div>

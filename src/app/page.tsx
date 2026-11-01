@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Tutor } from '@/types/tutor';
 import { Header } from '@/components/Header';
 import { HomeHero } from '@/components/HomeHero';
@@ -11,7 +11,8 @@ import { BindEmailModal } from '@/components/BindEmailModal';
 import { StudentPassModal } from '@/components/StudentPassModal';
 import { ContactViewModal } from '@/components/ContactViewModal';
 import { UnlockedTutorsDrawer } from '@/components/UnlockedTutorsDrawer';
-import { searchTutors } from '@/lib/tutorService';
+import { redactTutorContact, searchTutors } from '@/lib/tutorService';
+import { MOCK_TUTORS } from '@/data/mockTutors';
 import {
   DEFAULT_ADVANCED_FILTERS,
   type AdvancedFilterValues,
@@ -25,7 +26,22 @@ import { tutorMatchesMainCategory } from '@/lib/tutorFilters';
 import { isMainCategoryKey, type MainCategoryKey } from '@/types/mainCategory';
 import { authIntentForTutor } from '@/lib/contactFlowCopy';
 import { HOME_RESET_EVENT } from '@/components/LogoHomeLink';
+import {
+  buildTutorsCategoryPath,
+  buildTutorsPathForTag,
+  buildTutorsTagPath,
+  navigateTutorsPath,
+} from '@/lib/tutorTagRoutes';
 import { RefreshCw, AlertCircle } from 'lucide-react';
+
+/** 點大類時立刻有名單，不依賴非同步搜尋／舊快取 */
+function mocksForCategory(cat: MainCategoryKey | 'all'): Tutor[] {
+  const list =
+    cat === 'all'
+      ? MOCK_TUTORS
+      : MOCK_TUTORS.filter((t) => tutorMatchesMainCategory(t, cat));
+  return list.map(redactTutorContact);
+}
 
 const ONLINE_LOCATION = '線上';
 
@@ -41,9 +57,13 @@ export default function HomePage() {
   const [onlyFreeLesson, setOnlyFreeLesson] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedFilterValues>(DEFAULT_ADVANCED_FILTERS);
 
-  const [tutors, setTutors] = useState<Tutor[]>([]);
+  const [tutors, setTutors] = useState<Tutor[]>(() =>
+    MOCK_TUTORS.map(redactTutorContact)
+  );
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFromSupabase, setIsFromSupabase] = useState<boolean>(false);
+  /** 忽略過期的 searchTutors 回應，避免舊篩選結果蓋掉新大類 */
+  const searchGenRef = useRef(0);
 
   const {
     currentUser,
@@ -83,12 +103,19 @@ export default function HomePage() {
   }, []);
 
   const loadData = useCallback(async () => {
+    const gen = ++searchGenRef.current;
     setIsLoading(true);
     const online = isOnlineLocation(searchLocation);
     const mainCategory =
       activeCategory !== 'all' && isMainCategoryKey(activeCategory)
         ? activeCategory
         : '';
+
+    // 樂觀更新：大類一點就先塞示範老師，避免 debounce／競態期間畫面變 0
+    const optimistic = mocksForCategory(activeCategory);
+    if (optimistic.length > 0) {
+      setTutors(optimistic);
+    }
 
     try {
       const tutorResult = await searchTutors({
@@ -100,21 +127,35 @@ export default function HomePage() {
         sortBy: advanced.sortBy,
         onlyPublished: true,
       });
-      setTutors(tutorResult.tutors);
+      if (gen !== searchGenRef.current) return;
+      // 若遠端莫名回空但我們有示範老師，保住樂觀結果
+      if (tutorResult.tutors.length > 0) {
+        setTutors(tutorResult.tutors);
+      } else if (optimistic.length > 0) {
+        setTutors(optimistic);
+      } else {
+        setTutors([]);
+      }
       setIsFromSupabase(tutorResult.isFromSupabase);
     } catch {
+      if (gen !== searchGenRef.current) return;
       setIsFromSupabase(false);
+      if (optimistic.length > 0) setTutors(optimistic);
     } finally {
-      setIsLoading(false);
+      if (gen === searchGenRef.current) setIsLoading(false);
     }
   }, [searchLocation, searchSubject, activeCategory, advanced.mode, advanced.sortBy]);
 
   useEffect(() => {
+    // 換大類立刻樂觀填充（不等 debounce），避免 filteredTutors 把舊名單濾成 0
+    const optimistic = mocksForCategory(activeCategory);
+    if (optimistic.length > 0) setTutors(optimistic);
+
     const timer = window.setTimeout(() => {
       void loadData();
-    }, 280);
+    }, 180);
     return () => window.clearTimeout(timer);
-  }, [loadData]);
+  }, [loadData, activeCategory]);
 
   /** 聯繫／預約：未登入 → Auth；未訂閱 → Student Pass；已訂閱 → 聯絡方式 */
   const handleInitiateContact = (tutor: Tutor) => {
@@ -173,24 +214,78 @@ export default function HomePage() {
   };
 
   const filteredTutors = useMemo(() => {
-    return tutors.filter((tutor) => {
-      if (
-        activeCategory !== 'all' &&
-        !tutorMatchesMainCategory(tutor, activeCategory)
-      ) {
-        return false;
-      }
-      if (onlyFreeLesson && !tutor.firstLessonFree) return false;
-      return true;
-    });
+    const applyLocal = (list: Tutor[]) =>
+      list.filter((tutor) => {
+        if (
+          activeCategory !== 'all' &&
+          !tutorMatchesMainCategory(tutor, activeCategory)
+        ) {
+          return false;
+        }
+        if (onlyFreeLesson && !tutor.firstLessonFree) return false;
+        return true;
+      });
+
+    const next = applyLocal(tutors);
+    // 競態／舊回應把名單濾光時，用示範老師兜底（八大類永不空白）
+    if (next.length === 0 && activeCategory !== 'all') {
+      const fallback = applyLocal(mocksForCategory(activeCategory));
+      if (fallback.length > 0) return fallback;
+    }
+    return next;
   }, [tutors, activeCategory, onlyFreeLesson]);
 
+  const selectMainCategory = useCallback(
+    (cat: MainCategoryKey | 'all' | string) => {
+      const next: MainCategoryKey | 'all' =
+        cat === 'all' || isMainCategoryKey(cat) ? cat : 'all';
+      // 大分類綁定獨立網址；全部分類回首頁狀態
+      if (isMainCategoryKey(next)) {
+        navigateTutorsPath(buildTutorsCategoryPath(next));
+        return;
+      }
+      searchGenRef.current += 1;
+      setActiveCategory('all');
+      setSearchSubject('');
+      setTutors(mocksForCategory('all'));
+    },
+    []
+  );
+
+  /** 點 tag → 進 `/tutors/[main_category]/[slug]`；全部分類也會推導大類 */
+  const selectTag = useCallback(
+    (tag: string) => {
+      const next = tag.trim();
+      if (!next) {
+        if (isMainCategoryKey(activeCategory)) {
+          navigateTutorsPath(buildTutorsCategoryPath(activeCategory));
+        } else {
+          setSearchSubject('');
+        }
+        return;
+      }
+      if (isMainCategoryKey(activeCategory)) {
+        navigateTutorsPath(buildTutorsTagPath(activeCategory, next));
+        return;
+      }
+      const href = buildTutorsPathForTag(next);
+      if (href) {
+        navigateTutorsPath(href);
+        return;
+      }
+      setSearchSubject(next);
+    },
+    [activeCategory]
+  );
+
   const resetFilters = useCallback(() => {
+    searchGenRef.current += 1;
     setSearchSubject('');
     setSearchLocation('');
     setActiveCategory('all');
     setOnlyFreeLesson(false);
     setAdvanced(DEFAULT_ADVANCED_FILTERS);
+    setTutors(MOCK_TUTORS.map(redactTutorContact));
   }, []);
 
   /** Logo／麵包屑「idaltu」回首頁時清空篩選（同頁 soft 點擊也要生效） */
@@ -203,14 +298,6 @@ export default function HomePage() {
     return () => window.removeEventListener(HOME_RESET_EVENT, onHomeReset);
   }, [resetFilters]);
 
-  const hasActiveFilters =
-    Boolean(searchSubject.trim()) ||
-    Boolean(searchLocation.trim()) ||
-    activeCategory !== 'all' ||
-    onlyFreeLesson ||
-    advanced.mode !== 'all' ||
-    advanced.sortBy !== 'recommended';
-
   return (
     <div className="min-h-screen flex flex-col bg-white">
       <HomeHero
@@ -219,10 +306,7 @@ export default function HomePage() {
         searchLocation={searchLocation}
         setSearchLocation={setSearchLocation}
         activeMainCategory={activeCategory}
-        setActiveMainCategory={(cat) => {
-          setActiveCategory(cat);
-          setSearchSubject('');
-        }}
+        setActiveMainCategory={selectMainCategory}
       >
         <Header
           variant="hero"
@@ -252,7 +336,7 @@ export default function HomePage() {
             }
           />
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[18px] sm:text-[20px] text-[#121212] font-bold">
-            {isLoading ? (
+            {isLoading && filteredTutors.length === 0 ? (
               <span className="text-[#6e6e73] font-medium text-[16px]">正在載入導師…</span>
             ) : (
               <>
@@ -271,21 +355,16 @@ export default function HomePage() {
         <div id="tutor-results" />
         <CategoryFilter
           activeCategory={activeCategory}
-          setActiveCategory={(cat) =>
-            setActiveCategory(
-              cat === 'all' || isMainCategoryKey(cat) ? cat : 'all'
-            )
-          }
+          setActiveCategory={selectMainCategory}
           searchSubject={searchSubject}
-          setSearchSubject={setSearchSubject}
+          setSearchSubject={selectTag}
           onlyFreeLesson={onlyFreeLesson}
           setOnlyFreeLesson={setOnlyFreeLesson}
           mode={advanced.mode}
           setMode={(mode) => setAdvanced((prev) => ({ ...prev, mode }))}
           sortBy={advanced.sortBy}
           setSortBy={(sortBy) => setAdvanced((prev) => ({ ...prev, sortBy }))}
-          hasActiveFilters={hasActiveFilters}
-          onClearAll={resetFilters}
+          urlBound
         />
 
         <main id="tutors" className="max-w-[1060px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-10 sm:pb-14">
@@ -318,8 +397,8 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Superprof：桌面固定三欄（不經兩欄）；僅窄螢幕單欄 */}
-          {isLoading ? (
+          {/* Superprof：桌面固定三欄；有樂觀名單時不蓋 skeleton，避免大類切換空白 */}
+          {isLoading && filteredTutors.length === 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6 lg:gap-8">
               {[1, 2, 3, 4, 5, 6].map((skeletonId) => (
                 <div key={skeletonId} className="animate-pulse">

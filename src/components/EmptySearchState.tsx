@@ -52,7 +52,7 @@ export const EmptySearchState: React.FC<EmptySearchStateProps> = ({
           </button>
         )}
         <Link
-          href="/lessons/all/線上"
+          href="/lessons/online/all"
           className="inline-flex items-center gap-2 text-sm font-semibold text-[#5c5c5c] hover:text-[#1a1a1a] px-4 py-2.5 rounded-full border border-black/10 hover:bg-black/[0.03] transition"
         >
           <Monitor className="w-4 h-4 text-brand-500" />

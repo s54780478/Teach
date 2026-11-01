@@ -7,12 +7,22 @@ import {
 import { resolveCategoryId, tutorBelongsToCategory } from '@/data/taxonomySeed';
 import { resolveMainCategory } from '@/data/mainCategories';
 import type { MainCategoryKey } from '@/types/mainCategory';
+import { toTagSlug } from '@/lib/tagSlug';
 
-/** 科目／關鍵字：優先比對 tags，其次標題／姓名 */
+/** 科目／關鍵字：優先比對 tags（含英文 slug），其次標題／姓名 */
 export function tutorMatchesKeyword(tutor: Tutor, keyword: string): boolean {
   const q = keyword.trim().toLowerCase();
   if (!q) return true;
-  if (tutor.specialtyTags.some((t) => t.toLowerCase().includes(q))) return true;
+  if (
+    tutor.specialtyTags.some((t) => {
+      const lower = t.toLowerCase();
+      if (lower.includes(q)) return true;
+      // URL 英文 slug（piano）也能命中「鋼琴」
+      return toTagSlug(t) === q;
+    })
+  ) {
+    return true;
+  }
   const blob = [tutor.name, tutor.headline, tutor.bio, tutor.subjectCategory, tutor.verification.degree]
     .join(' ')
     .toLowerCase();
@@ -118,26 +128,12 @@ export function filterTutorsByRegionSubject(
       if (!match) return false;
     }
 
-    if (subject) {
-      const matchName = tutor.name.toLowerCase().includes(subject);
-      const matchCategory = tutor.subjectCategory.toLowerCase().includes(subject);
-      const matchTags = tutor.specialtyTags.some((t) => t.toLowerCase().includes(subject));
-      const matchHeadline = tutor.headline.toLowerCase().includes(subject);
-      const matchDegree = tutor.verification.degree.toLowerCase().includes(subject);
+    if (subject && !tutorMatchesKeyword(tutor, subject)) {
       const matchCatId =
         tutor.categoryId === subject ||
         tutor.mainCategory === subject ||
         resolveCategoryId(tutor.subjectCategory) === subject;
-      if (
-        !matchName &&
-        !matchCategory &&
-        !matchTags &&
-        !matchHeadline &&
-        !matchDegree &&
-        !matchCatId
-      ) {
-        return false;
-      }
+      if (!matchCatId) return false;
     }
 
     return true;

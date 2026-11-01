@@ -13,6 +13,9 @@ alter table public.tutors
   add column if not exists response_time text default '通常在 1 小時內回覆';
 
 alter table public.tutors
+  add column if not exists response_speed_minutes integer default 60;
+
+alter table public.tutors
   add column if not exists is_verified boolean default false;
 
 alter table public.tutors

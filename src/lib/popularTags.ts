@@ -14,6 +14,8 @@ export const POPULAR_TAG_DEFAULT_LIMIT = 24;
 export interface PopularTag {
   tag: string;
   count: number;
+  /** 全站聚合時：此 tag 最常出現的大類（點擊導向用） */
+  mainCategory?: MainCategoryKey;
 }
 
 function tagKey(raw: string): string | null {
@@ -29,8 +31,9 @@ function tagKey(raw: string): string | null {
 export function mergeTutorsForTagAgg(dbTutors: Tutor[]): Tutor[] {
   const real = dbTutors.filter((t) => !/^tutor-\d+$/.test(t.id));
   const byId = new Map<string, Tutor>();
-  for (const t of MOCK_TUTORS) byId.set(t.id, t);
   for (const t of real) byId.set(t.id, t);
+  // 示範導師覆寫舊 seed，確保 8 大類都有 tags 可聚合
+  for (const t of MOCK_TUTORS) byId.set(t.id, t);
   return Array.from(byId.values());
 }
 
@@ -63,22 +66,39 @@ export function aggregatePopularTags(
       })
     : tutors;
 
-  /** key → { count, bestDisplay, displayVotes } */
+  /** key → { count, displays, categoryVotes } */
   const map = new Map<
     string,
-    { count: number; displays: Map<string, number> }
+    {
+      count: number;
+      displays: Map<string, number>;
+      categoryVotes: Map<MainCategoryKey, number>;
+    }
   >();
 
   for (const tutor of scoped) {
+    const tutorMain = resolveMainCategory({
+      mainCategory: tutor.mainCategory,
+      categoryId: tutor.categoryId,
+      subjectCategory: tutor.subjectCategory,
+    });
     const seenInTutor = new Set<string>();
     for (const raw of tutor.specialtyTags || []) {
       const key = tagKey(raw);
       if (!key || seenInTutor.has(key)) continue;
       seenInTutor.add(key);
       const display = normalizeTagInput(raw).displayName || raw.trim();
-      const entry = map.get(key) || { count: 0, displays: new Map() };
+      const entry = map.get(key) || {
+        count: 0,
+        displays: new Map(),
+        categoryVotes: new Map(),
+      };
       entry.count += 1;
       entry.displays.set(display, (entry.displays.get(display) || 0) + 1);
+      entry.categoryVotes.set(
+        tutorMain,
+        (entry.categoryVotes.get(tutorMain) || 0) + 1
+      );
       map.set(key, entry);
     }
   }
@@ -98,7 +118,21 @@ export function aggregatePopularTags(
         bestVotes = votes;
       }
     }
-    rows.push({ tag: best, count: entry.count });
+    let bestMain: MainCategoryKey | undefined = category || undefined;
+    if (!bestMain) {
+      let top = -1;
+      for (const [mk, votes] of entry.categoryVotes) {
+        if (votes > top) {
+          top = votes;
+          bestMain = mk;
+        }
+      }
+    }
+    rows.push({
+      tag: best,
+      count: entry.count,
+      ...(bestMain ? { mainCategory: bestMain } : {}),
+    });
   }
 
   rows.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, 'zh-Hant'));

@@ -33,6 +33,11 @@ export interface Tutor {
   /** 一句話頭銜（≤50 字） */
   headline: string;
   bio: string;
+  /**
+   * YouTube 自我介紹影片（canonical watch URL；選填）
+   * 展示時轉 embed，文案欄位禁止貼外連
+   */
+  youtubeUrl?: string | null;
   avatarUrl: string;
   verification: VerificationInfo;
   /** 綜合驗證標章（身分或學歷任一通過） */

@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import { LessonsListing } from '@/components/LessonsListing';
 import {
+  buildLessonsPath,
   buildLessonsTitle,
-  fromSubjectSlug,
+  resolveRegionParam,
+  resolveSubjectParam,
   regionDisplayName,
 } from '@/lib/seoRoutes';
 
@@ -14,17 +17,39 @@ export async function generateMetadata({
   params,
 }: LessonsPageProps): Promise<Metadata> {
   const { region, subject } = await params;
-  const regionLabel = regionDisplayName(region);
-  const subjectLabel = fromSubjectSlug(subject) || '熱門';
+  const regionResolved = resolveRegionParam(region);
+  const subjectResolved = resolveSubjectParam(subject);
+  const regionLabel = regionDisplayName(regionResolved.canonicalSlug);
+  const subjectLabel = subjectResolved.displaySubject || '熱門';
   const title = buildLessonsTitle(regionLabel, subjectLabel);
 
   return {
-    title: `${title} ｜ idaltu`,
+    // layout template 會再加「｜ idaltu」
+    title,
     description: `探索${regionLabel}${subjectLabel}家教課程，瀏覽驗證師資、時薪與首堂免費試聽。訂閱 Student Pass 即可聯繫導師。`,
   };
 }
 
 export default async function LessonsSeoPage({ params }: LessonsPageProps) {
   const { region, subject } = await params;
-  return <LessonsListing regionSlug={region} subjectSlug={subject} />;
+  const regionResolved = resolveRegionParam(region);
+  const subjectResolved = resolveSubjectParam(subject);
+
+  if (regionResolved.needsRedirect || subjectResolved.needsRedirect) {
+    redirect(
+      buildLessonsPath(
+        regionResolved.canonicalSlug,
+        subjectResolved.canonicalSlug === 'all'
+          ? 'all'
+          : subjectResolved.displaySubject || subjectResolved.canonicalSlug
+      )
+    );
+  }
+
+  return (
+    <LessonsListing
+      regionSlug={regionResolved.canonicalSlug}
+      subjectSlug={subjectResolved.canonicalSlug}
+    />
+  );
 }

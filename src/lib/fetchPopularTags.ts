@@ -1,8 +1,11 @@
 import type { MainCategoryKey } from '@/types/mainCategory';
+import { isMainCategoryKey } from '@/types/mainCategory';
 
 export interface PopularTagItem {
   tag: string;
   count: number;
+  /** 全站熱門時帶所屬大類，點擊可導向 `/tutors/{main}/{slug}` */
+  mainCategory?: MainCategoryKey;
 }
 
 export interface PopularTagsResult {
@@ -13,7 +16,7 @@ export interface PopularTagsResult {
   categoryCount: number;
 }
 
-/** 少於此數視為「過少」，回退全站或隱藏 */
+/** @deprecated 已不再回退全站 tags；保留常數以免舊引用炸掉 */
 export const POPULAR_TAGS_FALLBACK_THRESHOLD = 4;
 
 async function fetchOnce(
@@ -25,14 +28,25 @@ async function fetchOnce(
   if (mainCategory) qs.set('main_category', mainCategory);
   const res = await fetch(`/api/tags/popular?${qs.toString()}`, { signal });
   if (!res.ok) throw new Error('popular tags failed');
-  const data = (await res.json()) as { tags?: PopularTagItem[] };
-  return Array.isArray(data.tags) ? data.tags.filter((t) => t?.tag) : [];
+  const data = (await res.json()) as {
+    tags?: Array<{ tag?: string; count?: number; mainCategory?: string }>;
+  };
+  if (!Array.isArray(data.tags)) return [];
+  return data.tags
+    .filter((t) => t?.tag)
+    .map((t) => ({
+      tag: String(t.tag),
+      count: Number(t.count) || 0,
+      ...(t.mainCategory && isMainCategoryKey(t.mainCategory)
+        ? { mainCategory: t.mainCategory }
+        : {}),
+    }));
 }
 
 /**
  * Steam 式熱門標籤：
- * - 有 main_category：先取該類；若 < threshold 則回退全站
- * - 全站仍空：source=empty（UI 可隱藏列）
+ * - 有選大類：只顯示該類 tags（絕不回退全站，避免「個人成長 + 國中數學」篩成 0 筆）
+ * - 未選大類：全站熱門
  */
 export async function fetchPopularTagsWithFallback(
   mainCategory: MainCategoryKey | '' | null,
@@ -41,7 +55,6 @@ export async function fetchPopularTagsWithFallback(
     threshold?: number;
   }
 ): Promise<PopularTagsResult> {
-  const threshold = options?.threshold ?? POPULAR_TAGS_FALLBACK_THRESHOLD;
   const signal = options?.signal;
 
   if (!mainCategory) {
@@ -54,23 +67,6 @@ export async function fetchPopularTagsWithFallback(
   }
 
   const categoryTags = await fetchOnce(mainCategory, signal);
-  if (categoryTags.length >= threshold) {
-    return {
-      tags: categoryTags,
-      source: 'category',
-      categoryCount: categoryTags.length,
-    };
-  }
-
-  const site = await fetchOnce('', signal);
-  if (site.length > 0) {
-    return {
-      tags: site,
-      source: 'site',
-      categoryCount: categoryTags.length,
-    };
-  }
-
   return {
     tags: categoryTags,
     source: categoryTags.length > 0 ? 'category' : 'empty',

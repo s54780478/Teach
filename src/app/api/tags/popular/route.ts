@@ -29,10 +29,11 @@ export async function GET(req: NextRequest) {
         POPULAR_TAG_DEFAULT_LIMIT
     )
   );
+  // 有指定大類時門檻降為 1，否則示範老師 tags 常因 min_count=2 被 RPC 濾光
+  const minCountDefault = mainRaw ? 1 : POPULAR_TAG_MIN_COUNT;
   const minCount = Math.max(
     1,
-    Number(searchParams.get('min_count') || POPULAR_TAG_MIN_COUNT) ||
-      POPULAR_TAG_MIN_COUNT
+    Number(searchParams.get('min_count') || minCountDefault) || minCountDefault
   );
 
   if (mainRaw && !isMainCategoryKey(mainRaw)) {
@@ -57,12 +58,31 @@ export async function GET(req: NextRequest) {
       });
 
       if (!error && Array.isArray(data) && data.length > 0) {
-        const tags: PopularTag[] = data
+        let tags: PopularTag[] = data
           .map((row: Record<string, unknown>) => ({
             tag: String(row.tag || ''),
             count: Number(row.count) || 0,
+            // RPC 有指定大類時直接帶上；全站則由前端／mock 聚合補 mainCategory
+            ...(mainCategory ? { mainCategory } : {}),
           }))
           .filter((t) => t.tag);
+
+        // DB 示範列偏舊／缺類時，用 MOCK 補齊該大類 tags
+        if (tags.length < 4) {
+          const fromMock = aggregatePopularTagsFromMock({
+            mainCategory: mainCategory || '',
+            limit,
+            minCount: 1,
+          });
+          const seen = new Set(tags.map((t) => t.tag.toLowerCase()));
+          for (const t of fromMock) {
+            if (!seen.has(t.tag.toLowerCase())) {
+              tags.push(t);
+              seen.add(t.tag.toLowerCase());
+            }
+          }
+          tags = tags.slice(0, limit);
+        }
 
         return NextResponse.json({
           tags,

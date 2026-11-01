@@ -55,9 +55,16 @@ import { LogoHomeLink } from '@/components/LogoHomeLink';
 import { useStudentPass } from '@/hooks/useStudentPass';
 import { TAXONOMY_CATEGORIES, categoryDisplayName } from '@/data/taxonomySeed';
 import { TaxonomyPicker } from '@/components/TaxonomyPicker';
+import { YoutubeIntroField } from '@/components/YoutubeIntroField';
 import { selectionFromLegacy } from '@/lib/taxonomyService';
 import { isMainCategoryKey } from '@/types/mainCategory';
 import type { TutorTaxonomySelection } from '@/types/taxonomy';
+import { validateOptionalYoutubeUrl } from '@/lib/youtubeUrl';
+import {
+  clearYoutubeDraft,
+  readYoutubeDraft,
+  writeYoutubeDraft,
+} from '@/lib/youtubeDraft';
 
 const MODE_LABEL: Record<TeachingMode, string> = {
   'in-person': '面對面授課',
@@ -83,6 +90,7 @@ interface ProfileFormState {
   name: string;
   headline: string;
   bio: string;
+  youtubeUrl: string;
   avatarUrl: string;
   specialtyTags: string[];
   subjectCategory: string;
@@ -113,16 +121,22 @@ function courseToForm(course: TutorCourse): EditFormState {
   };
 }
 
-function profileToForm(tutor: Tutor): ProfileFormState {
+function profileToForm(tutor: Tutor, userId?: string): ProfileFormState {
   const legacy = selectionFromLegacy({
     subjectCategory: tutor.subjectCategory,
     specialtyTags: tutor.specialtyTags,
     categoryId: tutor.mainCategory || tutor.categoryId,
   });
+  const yt =
+    tutor.youtubeUrl ||
+    (userId ? readYoutubeDraft(userId) : '') ||
+    '';
+  if (userId && yt) writeYoutubeDraft(userId, yt);
   return {
     name: tutor.name,
     headline: tutor.headline.slice(0, 50),
     bio: tutor.bio,
+    youtubeUrl: yt,
     avatarUrl: tutor.avatarUrl,
     specialtyTags: tutor.specialtyTags || [],
     subjectCategory: tutor.subjectCategory || categoryDisplayName(legacy.categoryId),
@@ -172,6 +186,7 @@ export default function TutorDashboardPage() {
   const [createForm, setCreateForm] = useState<EditFormState>(emptyCourseForm());
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [clearYoutube, setClearYoutube] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const {
@@ -196,8 +211,10 @@ export default function TutorDashboardPage() {
         getCoursesByTutorId(userId),
       ]);
       setProfile(tutorProfile);
-      if (tutorProfile) setProfileForm(profileToForm(tutorProfile));
-      else setProfileForm(null);
+      if (tutorProfile) {
+        setProfileForm(profileToForm(tutorProfile, userId));
+        setClearYoutube(false);
+      } else setProfileForm(null);
       if (courseResult.error) setError(courseResult.error);
       setCourses(courseResult.courses);
     } catch (err: unknown) {
@@ -266,6 +283,11 @@ export default function TutorDashboardPage() {
       showToast('請至少選擇或新增一個專長標籤');
       return;
     }
+    const ytCheck = validateOptionalYoutubeUrl(profileForm.youtubeUrl);
+    if (!ytCheck.ok) {
+      showToast(ytCheck.message);
+      return;
+    }
 
     setIsSavingProfile(true);
 
@@ -273,6 +295,8 @@ export default function TutorDashboardPage() {
       name: profileForm.name,
       headline: profileForm.headline.slice(0, 50),
       bio: profileForm.bio,
+      youtubeUrl: profileForm.youtubeUrl.trim(),
+      clearYoutube,
       avatarUrl: profileForm.avatarUrl,
       specialtyTags: profileForm.specialtyTags,
       subjectCategory: profileForm.subjectCategory,
@@ -308,7 +332,17 @@ export default function TutorDashboardPage() {
       showToast(result.error || '履歷儲存失敗');
       return;
     }
-    showToast('履歷已儲存');
+    if (clearYoutube) {
+      clearYoutubeDraft(currentUser.id);
+    } else if (ytCheck.value) {
+      writeYoutubeDraft(currentUser.id, ytCheck.value);
+    }
+    setClearYoutube(false);
+    showToast(
+      ytCheck.value || profileForm.youtubeUrl.trim()
+        ? '履歷已儲存（含自我介紹影片）'
+        : '履歷已儲存'
+    );
     await loadDashboard(currentUser.id);
   };
 
@@ -625,6 +659,9 @@ export default function TutorDashboardPage() {
                           name: '',
                           headline: '',
                           bio: '',
+                          youtubeUrl: currentUser
+                            ? readYoutubeDraft(currentUser.id)
+                            : '',
                           avatarUrl: '',
                           specialtyTags: [],
                           subjectCategory: categoryDisplayName('academic'),
@@ -722,7 +759,25 @@ export default function TutorDashboardPage() {
                           rows={4}
                           value={profileForm.bio}
                           onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })}
+                          placeholder="請勿貼 YouTube／外連；影片請用下方欄位"
                           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 resize-y"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <YoutubeIntroField
+                          id="pf-youtube"
+                          value={profileForm.youtubeUrl}
+                          onChange={(v) => {
+                            setClearYoutube(false);
+                            setProfileForm({ ...profileForm, youtubeUrl: v });
+                            writeYoutubeDraft(currentUser.id, v);
+                          }}
+                          onClear={() => {
+                            setClearYoutube(true);
+                            setProfileForm({ ...profileForm, youtubeUrl: '' });
+                            clearYoutubeDraft(currentUser.id);
+                          }}
+                          disabled={isSavingProfile}
                         />
                       </div>
                       <div className="sm:col-span-2">

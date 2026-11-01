@@ -41,6 +41,8 @@ export async function GET(req: NextRequest) {
     sortRaw === 'rating' ||
     sortRaw === 'price-asc' ||
     sortRaw === 'price-desc' ||
+    sortRaw === 'popularity' ||
+    sortRaw === 'reviews' ||
     sortRaw === 'recommended'
       ? sortRaw
       : 'recommended';

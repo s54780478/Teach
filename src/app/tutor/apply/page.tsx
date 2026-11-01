@@ -40,10 +40,17 @@ import {
 } from 'lucide-react';
 import { LogoHomeLink } from '@/components/LogoHomeLink';
 import { TaxonomyPicker } from '@/components/TaxonomyPicker';
+import { YoutubeIntroField } from '@/components/YoutubeIntroField';
 import { categoryDisplayName } from '@/data/taxonomySeed';
 import { selectionFromLegacy } from '@/lib/taxonomyService';
 import type { TutorTaxonomySelection } from '@/types/taxonomy';
 import { isMainCategoryKey } from '@/types/mainCategory';
+import { validateOptionalYoutubeUrl } from '@/lib/youtubeUrl';
+import {
+  clearYoutubeDraft,
+  readYoutubeDraft,
+  writeYoutubeDraft,
+} from '@/lib/youtubeDraft';
 
 const STEPS = [
   { id: 1, title: '基本資料', icon: UserRound },
@@ -65,6 +72,7 @@ interface FormState {
   firstLessonFree: boolean;
   freeLessonMinutes: FreeLessonMinutes;
   bio: string;
+  youtubeUrl: string;
   degree: string;
   lineId: string;
   phone: string;
@@ -84,6 +92,7 @@ const INITIAL_FORM: FormState = {
   firstLessonFree: true,
   freeLessonMinutes: 60,
   bio: '',
+  youtubeUrl: '',
   degree: '',
   lineId: '',
   phone: '',
@@ -103,6 +112,7 @@ export default function TutorApplyPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [clearYoutube, setClearYoutube] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -121,8 +131,16 @@ export default function TutorApplyPage() {
     setProfileLoading(true);
     try {
       const existing = await getTutorProfileByUserId(userId);
-      if (!existing) return;
+      if (!existing) {
+        const draft = readYoutubeDraft(userId);
+        if (draft) {
+          setForm((prev) => ({ ...prev, youtubeUrl: draft }));
+        }
+        return;
+      }
       setIsEditMode(true);
+      const yt =
+        existing.youtubeUrl || readYoutubeDraft(userId) || '';
       setForm({
         name: existing.name,
         avatarUrl: existing.avatarUrl?.includes('api.dicebear.com')
@@ -149,10 +167,13 @@ export default function TutorApplyPage() {
         firstLessonFree: existing.firstLessonFree,
         freeLessonMinutes: existing.freeLessonMinutes || 60,
         bio: existing.bio,
+        youtubeUrl: yt,
         degree: existing.verification.degree || '',
         lineId: existing.contact.lineId === '未提供' ? '' : existing.contact.lineId,
         phone: existing.contact.phone === '未提供' ? '' : existing.contact.phone,
       });
+      setClearYoutube(false);
+      if (yt) writeYoutubeDraft(userId, yt);
     } finally {
       setProfileLoading(false);
     }
@@ -198,6 +219,8 @@ export default function TutorApplyPage() {
       if (headlineErr) errors.headline = headlineErr;
       const rateErr = validateHourlyRate(form.hourlyRate);
       if (rateErr) errors.hourlyRate = rateErr;
+      const yt = validateOptionalYoutubeUrl(form.youtubeUrl);
+      if (!yt.ok) errors.youtubeUrl = yt.message;
     }
 
     if (currentStep === 3) {
@@ -278,6 +301,8 @@ export default function TutorApplyPage() {
       lineId: form.lineId.trim(),
       phone: form.phone.trim(),
       email: user.email || undefined,
+      youtubeUrl: form.youtubeUrl.trim(),
+      clearYoutube,
     });
 
     setIsSubmitting(false);
@@ -287,6 +312,14 @@ export default function TutorApplyPage() {
       return;
     }
 
+    if (clearYoutube) {
+      clearYoutubeDraft(user.id);
+    } else if (form.youtubeUrl.trim()) {
+      const yt = validateOptionalYoutubeUrl(form.youtubeUrl);
+      if (yt.ok && yt.value) writeYoutubeDraft(user.id, yt.value);
+    }
+
+    setClearYoutube(false);
     setSubmitSuccess(true);
   };
 
@@ -685,10 +718,28 @@ export default function TutorApplyPage() {
                   rows={3}
                   value={form.bio}
                   onChange={(e) => setField('bio', e.target.value)}
-                  placeholder="學經歷、教學特色…空白則使用系統預設簡介"
+                  placeholder="學經歷、教學特色…請勿貼 YouTube／外連（影片請用下方欄位）"
                   className={`${inputClass()} resize-y`}
                 />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  文案中的外連會自動移除；影片請使用「自我介紹影片」欄位。
+                </p>
               </div>
+
+              <YoutubeIntroField
+                value={form.youtubeUrl}
+                onChange={(v) => {
+                  setClearYoutube(false);
+                  setField('youtubeUrl', v);
+                  if (user?.id) writeYoutubeDraft(user.id, v);
+                }}
+                onClear={() => {
+                  setClearYoutube(true);
+                  setField('youtubeUrl', '');
+                  if (user?.id) clearYoutubeDraft(user.id);
+                }}
+                error={fieldErrors.youtubeUrl}
+              />
             </section>
           )}
 

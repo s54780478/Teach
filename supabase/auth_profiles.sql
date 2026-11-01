@@ -47,8 +47,9 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- 4. 允許 unlocks 表關聯與已登入用戶新增
+-- 4. 允許 unlocks：只能新增「自己的」解鎖列（禁止 with check (true)）
 drop policy if exists "允許已登入用戶新增解鎖紀錄" on public.unlocks;
-create policy "允許已登入用戶新增解鎖紀錄" 
-  on public.unlocks for insert 
-  with check (true);
+create policy "允許已登入用戶新增解鎖紀錄"
+  on public.unlocks for insert
+  to authenticated
+  with check (auth.uid()::text = buyer_id);

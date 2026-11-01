@@ -22,10 +22,36 @@ const notoSansTc = Noto_Sans_TC({
   display: 'swap',
 });
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  'https://idaltu.tw';
+
 export const metadata: Metadata = {
-  title: 'idaltu ｜ 找到最適合你的私人老師',
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: 'idaltu ｜ 找到最適合你的私人老師',
+    template: '%s ｜ idaltu',
+  },
   description:
     '探索全台家教課程；老師免費刊登不抽成，學員訂閱 Student Pass 即可聯繫導師。首堂免費試課。',
+  openGraph: {
+    type: 'website',
+    locale: 'zh_TW',
+    siteName: 'idaltu',
+    title: 'idaltu ｜ 找到最適合你的私人老師',
+    description:
+      '台灣在地家教與技能媒合。導師免費刊登、學員 Student Pass 解鎖聯繫，平台不抽成鐘點費。',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'idaltu ｜ 找到最適合你的私人老師',
+    description:
+      '台灣在地家教與技能媒合。導師免費刊登、學員 Student Pass 解鎖聯繫。',
+  },
+  alternates: {
+    canonical: '/',
+  },
 };
 
 export default function RootLayout({
